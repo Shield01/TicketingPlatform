@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.5" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.Annotations" Version="6.5.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Modules.UserService\Modules.UserService.csproj" />
+    <ProjectReference Include="..\Modules.TeamService\Modules.TeamService.csproj" />
+    <ProjectReference Include="..\Modules.EventService\Modules.EventService.csproj" />
+    <ProjectReference Include="..\Modules.TicketService\Modules.TicketService.csproj" />
+    <ProjectReference Include="..\Modules.PaymentService\Modules.PaymentService.csproj" />
+    <ProjectReference Include="..\Shared.Kernel\Shared.Kernel.csproj" />
+  </ItemGroup>
+
+</Project>

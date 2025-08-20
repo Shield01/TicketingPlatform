@@ -1,0 +1,181 @@
+---
+alwaysApply: true
+---
+## Modules & Responsibilities
+
+### 1. User Module
+
+#### Features
+- User registration and login
+- Password hashing and authentication tokens
+- Role-based access control (Admin, Host, Buyer)
+- Email verification and password reset
+
+#### APIs
+- `POST /api/users/register`
+- `POST /api/users/login`
+- `GET /api/users/me`
+- `POST /api/users/assign-role`
+
+---
+
+### 2. Events Module
+
+#### Features
+- Event creation, update, delete
+- Event publishing (draft or live)
+- Event visibility (public/private)
+- Event categories and tags
+
+#### APIs
+- `POST /api/events`
+- `PUT /api/events/{id}`
+- `GET /api/events`
+- `DELETE /api/events/{id}`
+
+---
+
+### 3. Tickets Module
+
+#### Features
+- Ticket tier creation (VIP, Regular, Early bird)
+- Generate encrypted tickets
+- Ticket verification endpoint for check-ins
+- Track ticket usage and redemption
+
+#### APIs
+- `POST /api/tickets`
+- `GET /api/tickets/event/{eventId}`
+- `POST /api/tickets/verify`
+
+---
+
+### 4. Payments Module
+
+#### Features
+- Integration with Paystack/Flutterwave
+- Initiate payments
+- Payment confirmation via webhook
+- Store transactions in database
+
+#### APIs
+- `POST /api/payments/initiate`
+- `POST /api/payments/webhook`
+- `GET /api/payments/user-history`
+
+---
+
+## Non-functional Requirements
+
+- **Security**: JWT-based authentication, Role-based authorization, Input validation
+- **Scalability**: Microservice-ready module boundaries
+- **Performance**: Endpoint response < 500ms
+- **Testing**: Minimum 95% test coverage across modules. As much as possible, strive to maintain 100% test coverage.
+- **Logging**: Centralized request logging and error tracking
+- **Documentation**: 100% Method/Function documentation and 100% API Documentation via Swagger
+
+---
+
+## Folder Structure (C# .NET Core, Cursor IDE Compatible)
+
+\`\`\`plaintext
+/src
+  /UserService
+    Controllers/
+    Services/
+    Repositories/
+    DTOs/
+    Models/
+    UnitTests/
+    Resources/LocalisedStrings
+  /EventService
+    Controllers/
+    Services/
+    Repositories/
+    DTOs/
+    Models/
+    UnitTests/
+    Resources/LocalisedStrings
+  /TicketService
+    Controllers/
+    Services/
+    Repositories/
+    DTOs/
+    Models/
+    Helpers/      # for encryption, QR generation
+    UnitTests/
+    Resources/LocalisedStrings
+  /PaymentService
+    Controllers/
+    Services/
+    Repositories/
+    DTOs/
+    Models/
+    Integrations/ # Paystack, Flutterwave
+    UnitTests/
+    Resources/LocalisedStrings
+/Shared
+  Constants/
+  Interfaces/
+  Middlewares/
+  Auth/
+  Utils/
+
+.sln
+README.md
+.env.example
+.gitignore
+docker-compose.yml (for local dev)
+\`\`\`
+
+---
+
+## Dependencies
+
+- ASP.NET Core 8 / .NET 8
+- Entity Framework Core
+- PostgreSQL or SQL Server
+- Paystack / Flutterwave SDK
+- JWT
+- xUnit for Unit Tests
+- Swagger for API docs
+
+---
+
+## Success Metrics
+
+- MVP ready and deployed in 90 days
+- 100+ users onboarded in month 1
+- 95% test coverage across modules
+- < 1% payment failure rate
+
+---
+
+## Future Roadmap (Post-MVP)
+
+- Mobile scanning app for ticket validation
+- Event analytics dashboard
+- Referral-based rewards for buyers
+- Integration with third-party platforms (Instagram, Eventbrite)
+- BNPL payment option
+- In-app wallet and currency support
+- Event discovery and recommendation engine
+
+---
+
+## Risks & Mitigations
+
+| Risk                              | Mitigation                                   |
+|----------------------------------|----------------------------------------------|
+| Payment API downtime             | Use multiple gateways                        |
+| Scalability under traffic spike  | Use load balancers and caching               |
+| Ticket fraud or duplication      | Encrypt ticket payload, use QR-based tokens  |
+| Organizer churn                  | Incentivize repeat usage, feedback loop      |
+
+---
+
+## Appendix
+
+- Sample ticket schema
+- Paystack/Flutterwave webhook payloads
+- QR Code encryption method

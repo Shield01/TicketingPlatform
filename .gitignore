@@ -1,0 +1,481 @@
+# TicketingPlatform - Comprehensive .gitignore
+# Generated for: Modular .NET 8+ Ticketing Platform
+# Covers: Backend API, Future Frontend, Mobile Apps, DevOps, and Production needs
+
+#######################################
+# .NET / C# / ASP.NET Core
+#######################################
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio 2015/2017/2019/2022 cache/options directory
+.vs/
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# NUnit
+*.VisualState.xml
+TestResult.xml
+nunit-*.xml
+
+# xUnit (your current testing framework)
+*.xunit.runner.json
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+lcov.info
+coverage.json
+coverage.xml
+coverage.cobertura.xml
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# NuGet
+*.nuget.props
+*.nuget.targets
+packages/
+# Uncomment if using packages.config
+# packages/repositories.config
+
+# Rider IDE
+.idea/
+*.sln.iml
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+#######################################
+# Entity Framework / Database
+#######################################
+
+# Local database files (when you migrate from in-memory)
+*.mdf
+*.ldf
+*.ndf
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# EF Migrations (keep structure, ignore generated)
+**/Migrations/*
+!**/Migrations/*.cs
+!**/Migrations/*.Designer.cs
+
+# Database backups
+*.bak
+*.tmp
+*.log
+
+#######################################
+# Configuration & Secrets
+#######################################
+
+# Environment-specific configuration
+appsettings.local.json
+appsettings.*.local.json
+appsettings.Production.json
+appsettings.Staging.json
+appsettings.Development.local.json
+
+# User secrets (already handled by .NET, but being explicit)
+**/secrets.json
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.staging
+.env.development
+
+# SSL Certificates & Keys
+*.pfx
+*.p12
+*.key
+*.pem
+*.crt
+*.cer
+*.jks
+
+# JWT Keys (if stored as files)
+jwt-keys/
+private-keys/
+
+#######################################
+# Payment Gateway & Integration Files
+#######################################
+
+# Paystack/Flutterwave config
+paystack-config.json
+flutterwave-config.json
+payment-secrets/
+
+# Webhook verification files
+webhook-secrets/
+gateway-certificates/
+
+#######################################
+# Logging & Monitoring
+#######################################
+
+# Application logs
+logs/
+*.log
+*.log.*
+nlog-*.txt
+
+# Performance profiling
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+# Application Insights
+ApplicationInsights.config
+
+#######################################
+# Future Frontend Development
+#######################################
+
+# Node.js (for potential React/Angular/Vue frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Frontend build output
+dist/
+build/
+.next/
+.nuxt/
+.gatsby/
+
+# Frontend environment
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Package manager lock files (keep one, ignore others)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+#######################################
+# Mobile Development (Future QR Scanner App)
+#######################################
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+bin/
+gen/
+local.properties
+proguard/
+
+# iOS
+*.ipa
+*.dSYM.zip
+*.dSYM
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+
+# React Native
+.metro-health-check*
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Flutter (if you choose Flutter for mobile)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+flutter_*.png
+
+#######################################
+# Docker & Containerization
+#######################################
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+*.tar
+*.tar.gz
+
+# Kubernetes
+*.kubeconfig
+k8s-secrets/
+
+#######################################
+# DevOps & Deployment
+#######################################
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+
+# ARM Templates
+*.parameters.json
+
+# GitHub Actions secrets
+.github/secrets/
+
+# Azure DevOps
+.azure/
+
+# AWS
+.aws/
+
+# Deployment packages
+publish/
+deployments/
+*.zip
+*.tar.gz
+
+#######################################
+# Testing & Quality Assurance
+#######################################
+
+# BenchmarkDotNet artifacts
+BenchmarkDotNet.Artifacts/
+
+# Coverlet (code coverage)
+coverage.json
+coverage.xml
+coverage.cobertura.xml
+
+# SonarQube
+.sonarqube/
+
+# Load testing
+*.loadtest
+jmeter-results/
+
+#######################################
+# Documentation & Reports
+#######################################
+
+# Generated documentation
+docs/_site/
+docs/.jekyll-cache/
+*.docx~
+*.xlsx~
+
+# API documentation
+swagger.json
+swagger.yaml
+openapi.json
+
+# Reports
+reports/
+*.report
+
+#######################################
+# Temporary & Cache Files
+#######################################
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+#######################################
+# IDE & Editor Files
+#######################################
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Eclipse (if using Eclipse-based tools)
+.metadata
+.project
+.settings/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+
+#######################################
+# Performance & Profiling
+#######################################
+
+# Memory dumps
+*.dmp
+
+# Performance files
+*.psess
+*.vsp
+*.vspx
+
+# Application Insights
+ApplicationInsights.config
+
+#######################################
+# Custom Project Specific
+#######################################
+
+# Ticket generation cache
+ticket-cache/
+qr-codes-temp/
+
+# Email templates compiled
+email-templates-compiled/
+
+# File uploads (user content)
+uploads/
+user-content/
+event-images/
+profile-pictures/
+
+# Cached responses
+api-cache/
+response-cache/
+
+# Backup database scripts
+db-backup-scripts/
+
+# Local development data
+dev-data/
+seed-data/local/
+
+# Performance benchmarks
+benchmark-results/
+
+# Third-party integrations cache
+integrations-cache/
+
+#######################################
+# Security & Compliance
+#######################################
+
+# Security scan results
+security-reports/
+*.sarif
+
+# Compliance artifacts
+compliance-reports/
+audit-logs/
+
+# License verification
+license-check/
+
+#######################################
+# Health Checks & Monitoring
+#######################################
+
+# Health check artifacts
+health-reports/
+uptime-logs/
+
+#######################################
+# KEEP THESE FILES (Explicit inclusions)
+#######################################
+
+# Keep example configuration files
+!appsettings.example.json
+!.env.example
+!docker-compose.example.yml
+
+# Keep documentation
+!README.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!LICENSE
+!docs/
+
+# Keep CI/CD configuration
+!.github/
+!.github/workflows/
+!azure-pipelines.yml
+!Dockerfile
+!docker-compose.yml
+
+# Keep project structure files
+!.gitkeep
+!*.sln
+!global.json
+!nuget.config
+!Directory.Build.props
+!Directory.Build.targets
+
+# Keep test data
+!**/TestData/
+!**/SampleData/
