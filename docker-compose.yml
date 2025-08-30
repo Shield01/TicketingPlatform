@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for local development
+  ticketing-db:
+    image: postgres:15-alpine
+    container_name: ticketing-postgres-dev
+    environment:
+      POSTGRES_USER: ticketing_admin
+      POSTGRES_PASSWORD: ticketing_dev_password
+      POSTGRES_DB: ticketing_platform_dev
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ticketing_db_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - ticketing-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketing_admin -d ticketing_platform_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin for database management (optional)
+  ticketing-pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ticketing-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ticketingplatform.dev
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "8080:80"
+    volumes:
+      - ticketing_pgadmin_data:/var/lib/pgadmin
+    networks:
+      - ticketing-network
+    depends_on:
+      - ticketing-db
+    restart: unless-stopped
+
+  # API Service (for full stack development)
+  ticketing-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ticketing-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8000
+      - POSTGRES_CONNECTION=Host=ticketing-db;Port=5432;Database=ticketing_platform_dev;Username=ticketing_admin;Password=ticketing_dev_password;Sslmode=Disable
+    ports:
+      - "8000:8000"
+    depends_on:
+      ticketing-db:
+        condition: service_healthy
+    networks:
+      - ticketing-network
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+    profiles:
+      - full-stack
+
+volumes:
+  ticketing_db_data:
+    driver: local
+  ticketing_pgadmin_data:
+    driver: local
+
+networks:
+  ticketing-network:
+    driver: bridge

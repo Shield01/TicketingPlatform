@@ -43,10 +43,8 @@ namespace Modules.TeamService.Repositories
         public async Task<Team?> GetTeamByIdAsync(Guid id)
         {
             return await _context.Teams
-                .Include(t => t.TeamLeader)
-                .Include(t => t.TeamMembers)
-                    .ThenInclude(tm => tm.User)
-                .FirstOrDefaultAsync(t => t.Id == id);
+                .Include(t => t.TeamMembers.Where(tm => tm.IsActive))
+                .FirstOrDefaultAsync(t => t.Id == id && t.IsActive);
         }
 
         /// <summary>
@@ -56,9 +54,7 @@ namespace Modules.TeamService.Repositories
         public async Task<IEnumerable<Team>> GetAllTeamsAsync()
         {
             return await _context.Teams
-                .Include(t => t.TeamLeader)
-                .Include(t => t.TeamMembers)
-                    .ThenInclude(tm => tm.User)
+                .Include(t => t.TeamMembers.Where(tm => tm.IsActive))
                 .Where(t => t.IsActive)
                 .ToListAsync();
         }
@@ -71,9 +67,7 @@ namespace Modules.TeamService.Repositories
         public async Task<IEnumerable<Team>> GetTeamsByUserIdAsync(Guid userId)
         {
             return await _context.Teams
-                .Include(t => t.TeamLeader)
-                .Include(t => t.TeamMembers)
-                    .ThenInclude(tm => tm.User)
+                .Include(t => t.TeamMembers.Where(tm => tm.IsActive))
                 .Where(t => t.IsActive && 
                            (t.TeamLeaderId == userId || 
                             t.TeamMembers.Any(tm => tm.UserId == userId && tm.IsActive)))
@@ -88,9 +82,7 @@ namespace Modules.TeamService.Repositories
         public async Task<IEnumerable<Team>> GetTeamsByLeaderIdAsync(Guid userId)
         {
             return await _context.Teams
-                .Include(t => t.TeamLeader)
-                .Include(t => t.TeamMembers)
-                    .ThenInclude(tm => tm.User)
+                .Include(t => t.TeamMembers.Where(tm => tm.IsActive))
                 .Where(t => t.IsActive && t.TeamLeaderId == userId)
                 .ToListAsync();
         }
@@ -187,7 +179,6 @@ namespace Modules.TeamService.Repositories
         public async Task<IEnumerable<TeamMember>> GetTeamMembersAsync(Guid teamId)
         {
             return await _context.TeamMembers
-                .Include(tm => tm.User)
                 .Include(tm => tm.Team)
                 .Where(tm => tm.TeamId == teamId && tm.IsActive)
                 .ToListAsync();

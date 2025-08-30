@@ -24,16 +24,6 @@ namespace Modules.EventService.Data
         public DbSet<Event> Events { get; set; }
 
         /// <summary>
-        /// Gets or sets the Users DbSet (for navigation properties).
-        /// </summary>
-        public DbSet<User> Users { get; set; }
-
-        /// <summary>
-        /// Gets or sets the Teams DbSet (for navigation properties).
-        /// </summary>
-        public DbSet<Team> Teams { get; set; }
-
-        /// <summary>
         /// Configures the model for the EventService module.
         /// </summary>
         /// <param name="modelBuilder">The model builder instance.</param>
@@ -41,9 +31,13 @@ namespace Modules.EventService.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            // Set default schema for Events module
+            modelBuilder.HasDefaultSchema("events");
+
             // Configure Event entity
             modelBuilder.Entity<Event>(entity =>
             {
+                entity.ToTable("app_events");
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Id).ValueGeneratedOnAdd();
                 
@@ -65,24 +59,27 @@ namespace Modules.EventService.Data
                     .IsRequired()
                     .HasMaxLength(50)
                     .HasDefaultValue("Draft");
+
+                entity.Property(e => e.IsPublic)
+                    .HasDefaultValue(true);
+
+                entity.Property(e => e.IsPublished)
+                    .HasDefaultValue(false);
+
+                entity.Property(e => e.IsActive)
+                    .HasDefaultValue(true);
                 
                 entity.Property(e => e.CreatedAt)
-                    .HasDefaultValueSql("GETUTCDATE()");
+                    .HasDefaultValueSql("NOW()");
                 
                 entity.Property(e => e.UpdatedAt)
-                    .HasDefaultValueSql("GETUTCDATE()");
+                    .HasDefaultValueSql("NOW()");
 
-                // Configure relationship with User
-                entity.HasOne(e => e.Organizer)
-                    .WithMany()
-                    .HasForeignKey(e => e.OrganizerId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                // Configure foreign keys to other schemas without configuring the entities
+                entity.Property(e => e.OrganizerId)
+                    .IsRequired();
 
-                // Configure relationship with Team
-                entity.HasOne(e => e.Team)
-                    .WithMany()
-                    .HasForeignKey(e => e.TeamId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                entity.Property(e => e.TeamId); // Optional foreign key
 
                 // Add indexes for better performance
                 entity.HasIndex(e => e.OrganizerId);
@@ -90,32 +87,19 @@ namespace Modules.EventService.Data
                 entity.HasIndex(e => e.Status);
                 entity.HasIndex(e => e.StartDate);
                 entity.HasIndex(e => e.IsPublic);
+                entity.HasIndex(e => e.IsPublished);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.Category);
+                entity.HasIndex(e => e.CreatedAt);
             });
 
-            // Configure User entity (for navigation properties)
-            modelBuilder.Entity<User>(entity =>
-            {
-                entity.HasKey(u => u.Id);
-                entity.Property(u => u.Id).ValueGeneratedOnAdd();
-                
-                entity.Property(u => u.Email)
-                    .IsRequired()
-                    .HasMaxLength(255);
-                
-                entity.Property(u => u.FirstName)
-                    .IsRequired()
-                    .HasMaxLength(100);
-                
-                entity.Property(u => u.LastName)
-                    .IsRequired()
-                    .HasMaxLength(100);
-                
-                entity.Property(u => u.Role)
-                    .IsRequired()
-                    .HasMaxLength(50);
-                
-                entity.HasIndex(u => u.Email).IsUnique();
-            });
+            // Ignore navigation properties to prevent EF from creating local tables
+            modelBuilder.Ignore<User>();
+            modelBuilder.Ignore<Team>();
+            modelBuilder.Ignore<TeamMember>();
+            
+            // NOTE: We do NOT configure User or Team entities here to avoid table creation conflicts
+            // Cross-schema relationships will be handled via foreign key properties only
         }
     }
-} 
+}

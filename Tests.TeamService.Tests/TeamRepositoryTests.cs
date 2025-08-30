@@ -68,20 +68,11 @@ namespace Tests.TeamService.Tests
                 Name = "Test Team",
                 Description = "Test Description",
                 TeamLeaderId = teamLeaderId,
-                IsActive = true
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
 
-            // Add a user for the team leader
-            var teamLeader = new User
-            {
-                Id = teamLeaderId,
-                Email = "leader@test.com",
-                FirstName = "Team",
-                LastName = "Leader",
-                Role = "Organiser"
-            };
-
-            _context.Users.Add(teamLeader);
             _context.Teams.Add(team);
             await _context.SaveChangesAsync();
 
@@ -96,6 +87,9 @@ namespace Tests.TeamService.Tests
             Assert.NotNull(result);
             Assert.Equal(team.Id, result.Id);
             Assert.Equal(team.Name, result.Name);
+            Assert.Equal(team.Description, result.Description);
+            Assert.Equal(team.TeamLeaderId, result.TeamLeaderId);
+            Assert.True(result.IsActive);
         }
 
         [Fact]
@@ -119,23 +113,46 @@ namespace Tests.TeamService.Tests
             var teamLeader2Id = Guid.NewGuid();
             var teamLeader3Id = Guid.NewGuid();
 
-            var users = new List<User>
-            {
-                new User { Id = teamLeader1Id, Email = "leader1@test.com", FirstName = "Leader", LastName = "1", Role = "Organiser" },
-                new User { Id = teamLeader2Id, Email = "leader2@test.com", FirstName = "Leader", LastName = "2", Role = "Organiser" },
-                new User { Id = teamLeader3Id, Email = "leader3@test.com", FirstName = "Leader", LastName = "3", Role = "Organiser" }
-            };
-
             var teams = new List<Team>
             {
-                new Team { Id = Guid.NewGuid(), Name = "Team 1", TeamLeaderId = teamLeader1Id, IsActive = true },
-                new Team { Id = Guid.NewGuid(), Name = "Team 2", TeamLeaderId = teamLeader2Id, IsActive = true },
-                new Team { Id = Guid.NewGuid(), Name = "Team 3", TeamLeaderId = teamLeader3Id, IsActive = false }
+                new Team 
+                { 
+                    Id = Guid.NewGuid(), 
+                    Name = "Team 1", 
+                    Description = "Active Team 1",
+                    TeamLeaderId = teamLeader1Id, 
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                },
+                new Team 
+                { 
+                    Id = Guid.NewGuid(), 
+                    Name = "Team 2", 
+                    Description = "Active Team 2",
+                    TeamLeaderId = teamLeader2Id, 
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                },
+                new Team 
+                { 
+                    Id = Guid.NewGuid(), 
+                    Name = "Team 3", 
+                    Description = "Inactive Team 3",
+                    TeamLeaderId = teamLeader3Id, 
+                    IsActive = false,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                }
             };
 
-            _context.Users.AddRange(users);
             _context.Teams.AddRange(teams);
             await _context.SaveChangesAsync();
+
+            // Verify teams were saved
+            var allTeams = await _context.Teams.ToListAsync();
+            Assert.Equal(3, allTeams.Count);
 
             // Act
             var result = await _repository.GetAllTeamsAsync();
@@ -301,19 +318,15 @@ namespace Tests.TeamService.Tests
             var userId1 = Guid.NewGuid();
             var userId2 = Guid.NewGuid();
 
-            var users = new List<User>
-            {
-                new User { Id = teamLeaderId, Email = "leader@test.com", FirstName = "Team", LastName = "Leader", Role = "Organiser" },
-                new User { Id = userId1, Email = "member1@test.com", FirstName = "Member", LastName = "1", Role = "Staff" },
-                new User { Id = userId2, Email = "member2@test.com", FirstName = "Member", LastName = "2", Role = "Staff" }
-            };
-
             var team = new Team
             {
                 Id = Guid.NewGuid(),
                 Name = "Test Team",
+                Description = "Test Team Description",
                 TeamLeaderId = teamLeaderId,
-                IsActive = true
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
 
             var teamMembers = new List<TeamMember>
@@ -324,7 +337,10 @@ namespace Tests.TeamService.Tests
                     TeamId = team.Id,
                     UserId = userId1,
                     TeamRole = "Member",
-                    IsActive = true
+                    IsActive = true,
+                    JoinedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
                 },
                 new TeamMember
                 {
@@ -332,14 +348,20 @@ namespace Tests.TeamService.Tests
                     TeamId = team.Id,
                     UserId = userId2,
                     TeamRole = "Admin",
-                    IsActive = true
+                    IsActive = true,
+                    JoinedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
                 }
             };
 
-            _context.Users.AddRange(users);
             _context.Teams.Add(team);
             _context.TeamMembers.AddRange(teamMembers);
             await _context.SaveChangesAsync();
+
+            // Verify data was saved
+            var savedMembers = await _context.TeamMembers.Where(tm => tm.TeamId == team.Id).ToListAsync();
+            Assert.Equal(2, savedMembers.Count);
 
             // Act
             var result = await _repository.GetTeamMembersAsync(team.Id);
@@ -348,6 +370,7 @@ namespace Tests.TeamService.Tests
             Assert.NotNull(result);
             Assert.Equal(2, result.Count());
             Assert.All(result, member => Assert.True(member.IsActive));
+            Assert.All(result, member => Assert.Equal(team.Id, member.TeamId));
         }
 
         [Fact]

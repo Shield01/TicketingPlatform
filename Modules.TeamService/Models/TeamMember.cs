@@ -56,5 +56,10 @@ namespace Modules.TeamService.Models
         /// The date and time when the team member was last updated.
         /// </summary>
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// The date and time when the team member was created
+        /// </summary>
+        public DateTime CreatedAt {  get; set; } = DateTime.UtcNow;
     }
 } 

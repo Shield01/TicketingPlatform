@@ -157,12 +157,19 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AuthenticatedUser", policy => policy.RequireAuthenticatedUser());
 });
 
-// Register module services
-builder.Services.AddUserModule();
-builder.Services.AddTeamModule(); // Using in-memory database
-builder.Services.AddEventModule(); // Using in-memory database
-builder.Services.AddTicketModule();
-builder.Services.AddPaymentModule();
+// Add health checks with PostgreSQL
+builder.Services.AddHealthChecks()
+    .AddNpgSql(
+        connectionString: Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.GetPostgresConnectionString(builder.Configuration),
+        name: "postgresql",
+        tags: new[] { "database", "postgres" });
+
+// Register module services with configuration
+builder.Services.AddUserModule(builder.Configuration);
+builder.Services.AddTeamModule(builder.Configuration);
+builder.Services.AddEventModule(builder.Configuration);
+builder.Services.AddTicketModule(builder.Configuration);
+builder.Services.AddPaymentModule(builder.Configuration);
 
 var app = builder.Build();
 
@@ -197,8 +204,34 @@ app.MapControllers();
 // app.MapTicketEndpoints();
 // app.MapPaymentEndpoints();
 
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }))
-   .WithName("HealthCheck")
+// Map health check endpoints
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var response = new
+        {
+            status = report.Status.ToString(),
+            timestamp = DateTime.UtcNow,
+            duration = report.TotalDuration,
+            checks = report.Entries.Select(entry => new
+            {
+                name = entry.Key,
+                status = entry.Value.Status.ToString(),
+                duration = entry.Value.Duration,
+                description = entry.Value.Description,
+                tags = entry.Value.Tags
+            })
+        };
+        await context.Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(response));
+    }
+})
+.WithName("HealthCheck")
+.WithTags("Health");
+
+app.MapGet("/health/ready", () => Results.Ok(new { status = "Ready", timestamp = DateTime.UtcNow }))
+   .WithName("ReadinessCheck")
    .WithTags("Health");
 
 app.Run();

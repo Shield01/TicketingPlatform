@@ -25,20 +25,27 @@ namespace Modules.UserService.Repositories
         {
             base.OnModelCreating(modelBuilder);
 
+            // Set default schema for User module
+            modelBuilder.HasDefaultSchema("users");
+
             // Configure User entity
             modelBuilder.Entity<User>(entity =>
             {
+                entity.ToTable("app_users");
                 entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedOnAdd();
                 
                 entity.Property(e => e.Email)
                     .IsRequired()
                     .HasMaxLength(255);
                 
                 entity.HasIndex(e => e.Email)
-                    .IsUnique();
+                    .IsUnique()
+                    .HasDatabaseName("IX_app_users_email");
                 
                 entity.Property(e => e.PasswordHash)
-                    .IsRequired();
+                    .IsRequired()
+                    .HasMaxLength(500);
                 
                 entity.Property(e => e.FirstName)
                     .IsRequired()
@@ -50,13 +57,28 @@ namespace Modules.UserService.Repositories
                 
                 entity.Property(e => e.Role)
                     .IsRequired()
-                    .HasMaxLength(50);
+                    .HasMaxLength(50)
+                    .HasDefaultValue("Attendee");
+                
+                entity.Property(e => e.EmailVerified)
+                    .HasDefaultValue(false);
                 
                 entity.Property(e => e.CreatedAt)
-                    .IsRequired();
+                    .IsRequired()
+                    .HasDefaultValueSql("NOW()");
                 
                 entity.Property(e => e.UpdatedAt)
-                    .IsRequired();
+                    .IsRequired()
+                    .HasDefaultValueSql("NOW()");
+
+                entity.Property(e => e.IsActive)
+                    .HasDefaultValue(true);
+
+                // Add indexes for better performance
+                entity.HasIndex(e => e.Role);
+                entity.HasIndex(e => e.EmailVerified);
+                entity.HasIndex(e => e.IsActive);
+                entity.HasIndex(e => e.CreatedAt);
             });
         }
     }
