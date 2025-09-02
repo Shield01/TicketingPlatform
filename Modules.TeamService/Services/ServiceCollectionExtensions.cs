@@ -50,14 +50,27 @@ namespace Modules.TeamService.Services
         /// <returns>The IServiceCollection instance.</returns>
         public static IServiceCollection AddTeamsPersistence(this IServiceCollection services, IConfiguration configuration)
         {
-            var connectionString = ConnectionStringHelper.GetPostgresConnectionString(configuration);
-            
-            services.AddDbContext<TeamServiceDbContext>(options =>
-                options.UseNpgsql(connectionString, npgOptions =>
-                {
-                    npgOptions.MigrationsAssembly(typeof(TeamServiceDbContext).Assembly.FullName);
-                    npgOptions.EnableRetryOnFailure(maxRetryCount: 3);
-                }));
+            try
+            {
+                var connectionString = ConnectionStringHelper.GetPostgresConnectionString(configuration);
+                Console.WriteLine("[TeamService] PostgreSQL connection configured successfully");
+                
+                services.AddDbContext<TeamServiceDbContext>(options =>
+                    options.UseNpgsql(connectionString, npgOptions =>
+                    {
+                        npgOptions.MigrationsAssembly(typeof(TeamServiceDbContext).Assembly.FullName);
+                        npgOptions.EnableRetryOnFailure(
+                            maxRetryCount: 3,
+                            maxRetryDelay: TimeSpan.FromSeconds(10),
+                            errorCodesToAdd: null);
+                        npgOptions.CommandTimeout(30);
+                    }));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TeamService] CRITICAL ERROR: Failed to configure PostgreSQL connection: {ex.Message}");
+                throw; // Re-throw to prevent module from being registered with invalid config
+            }
 
             return services;
         }

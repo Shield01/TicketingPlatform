@@ -52,14 +52,27 @@ namespace Modules.EventService.Services
         /// <returns>The IServiceCollection instance.</returns>
         public static IServiceCollection AddEventsPersistence(this IServiceCollection services, IConfiguration configuration)
         {
-            var connectionString = ConnectionStringHelper.GetPostgresConnectionString(configuration);
-            
-            services.AddDbContext<EventServiceDbContext>(options =>
-                options.UseNpgsql(connectionString, npgOptions =>
-                {
-                    npgOptions.MigrationsAssembly(typeof(EventServiceDbContext).Assembly.FullName);
-                    npgOptions.EnableRetryOnFailure(maxRetryCount: 3);
-                }));
+            try
+            {
+                var connectionString = ConnectionStringHelper.GetPostgresConnectionString(configuration);
+                Console.WriteLine("[EventService] PostgreSQL connection configured successfully");
+                
+                services.AddDbContext<EventServiceDbContext>(options =>
+                    options.UseNpgsql(connectionString, npgOptions =>
+                    {
+                        npgOptions.MigrationsAssembly(typeof(EventServiceDbContext).Assembly.FullName);
+                        npgOptions.EnableRetryOnFailure(
+                            maxRetryCount: 3,
+                            maxRetryDelay: TimeSpan.FromSeconds(10),
+                            errorCodesToAdd: null);
+                        npgOptions.CommandTimeout(30);
+                    }));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[EventService] CRITICAL ERROR: Failed to configure PostgreSQL connection: {ex.Message}");
+                throw; // Re-throw to prevent module from being registered with invalid config
+            }
 
             return services;
         }

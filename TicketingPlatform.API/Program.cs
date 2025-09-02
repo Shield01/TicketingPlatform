@@ -14,6 +14,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Shared.Kernel.Constants;
+using DotNetEnv;
+
+// Load environment variables from .env file
+Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -119,9 +123,15 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // Configure JWT Authentication
-var jwtSecretKey = builder.Configuration["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey not configured");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "TicketingPlatform";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "TicketingPlatform";
+var jwtSecretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? 
+                   builder.Configuration["Jwt:SecretKey"] ?? 
+                   throw new InvalidOperationException("JWT SecretKey not configured");
+var jwtIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? 
+                builder.Configuration["Jwt:Issuer"] ?? 
+                "TicketingPlatform";
+var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? 
+                  builder.Configuration["Jwt:Audience"] ?? 
+                  "TicketingPlatform";
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -158,9 +168,22 @@ builder.Services.AddAuthorization(options =>
 });
 
 // Add health checks with PostgreSQL
+Console.WriteLine("=== DATABASE CONNECTION SETUP ===");
+string postgresConnectionString;
+try
+{
+    postgresConnectionString = Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.GetPostgresConnectionString(builder.Configuration);
+    Console.WriteLine("[STARTUP] PostgreSQL connection string resolved successfully");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[STARTUP] CRITICAL ERROR: Failed to resolve PostgreSQL connection string: {ex.Message}");
+    throw; // Re-throw to prevent app from starting with invalid config
+}
+
 builder.Services.AddHealthChecks()
     .AddNpgSql(
-        connectionString: Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.GetPostgresConnectionString(builder.Configuration),
+        connectionString: postgresConnectionString,
         name: "postgresql",
         tags: new[] { "database", "postgres" });
 
@@ -233,5 +256,180 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
 app.MapGet("/health/ready", () => Results.Ok(new { status = "Ready", timestamp = DateTime.UtcNow }))
    .WithName("ReadinessCheck")
    .WithTags("Health");
+
+// Debug endpoint for connection string investigation (only for development/staging)
+app.MapGet("/debug/connection", (IConfiguration configuration) =>
+{
+    try
+    {
+        // Get all environment variables related to database
+        var postgresConnection = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION");
+        var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+        var configConnection = configuration.GetConnectionString("Postgres");
+        
+        // Get the actual connection string that would be used
+        string actualConnectionString;
+        string source;
+        
+        try
+        {
+            actualConnectionString = Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.GetPostgresConnectionString(configuration);
+            source = "Successfully resolved";
+        }
+        catch (Exception ex)
+        {
+            actualConnectionString = $"ERROR: {ex.Message}";
+            source = "Failed to resolve";
+        }
+
+        // Create Supabase fallback if available
+        string? fallbackConnection = null;
+        var originalUrl = databaseUrl ?? configConnection;
+        if (!string.IsNullOrEmpty(originalUrl) && originalUrl.Contains("supabase.com"))
+        {
+            fallbackConnection = Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.CreateSupabaseFallbackConnection(originalUrl);
+        }
+        
+        var debugInfo = new
+        {
+            timestamp = DateTime.UtcNow,
+            environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+            connectionSources = new
+            {
+                postgresConnection_EnvVar = string.IsNullOrEmpty(postgresConnection) ? "[NOT SET]" : Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.MaskConnectionString(postgresConnection),
+                databaseUrl_EnvVar = string.IsNullOrEmpty(databaseUrl) ? "[NOT SET]" : Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.MaskUrl(databaseUrl),
+                appsettingsPostgres = string.IsNullOrEmpty(configConnection) ? "[NOT SET]" : 
+                    configConnection.StartsWith("postgres://") ? 
+                        Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.MaskUrl(configConnection) : 
+                        Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.MaskConnectionString(configConnection)
+            },
+            resolved = new
+            {
+                source = source,
+                connectionString = actualConnectionString.StartsWith("ERROR:") ? actualConnectionString : Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.MaskConnectionString(actualConnectionString),
+                supabaseFallback = string.IsNullOrEmpty(fallbackConnection) ? "[NOT AVAILABLE]" : Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.MaskConnectionString(fallbackConnection)
+            },
+            allEnvironmentVariables = Environment.GetEnvironmentVariables()
+                .Cast<System.Collections.DictionaryEntry>()
+                .Where(x => x.Key.ToString()!.ToUpper().Contains("DATABASE") || 
+                           x.Key.ToString()!.ToUpper().Contains("POSTGRES") ||
+                           x.Key.ToString()!.ToUpper().Contains("CONNECTION") ||
+                           x.Key.ToString()!.ToUpper().Contains("ASPNETCORE") ||
+                           x.Key.ToString()!.ToUpper().Contains("RENDER") ||
+                           x.Key.ToString()!.ToUpper().Contains("PORT"))
+                .ToDictionary(x => x.Key.ToString()!, x => 
+                {
+                    var value = x.Value?.ToString() ?? "";
+                    if (value.StartsWith("postgres://"))
+                        return Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.MaskUrl(value);
+                    else if (value.Contains("Password=") || value.Contains("password="))
+                        return Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.MaskConnectionString(value);
+                    else
+                        return value;
+                }),
+            deploymentInfo = new
+            {
+                isRender = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RENDER")),
+                renderServiceId = Environment.GetEnvironmentVariable("RENDER_SERVICE_ID"),
+                renderServiceName = Environment.GetEnvironmentVariable("RENDER_SERVICE_NAME"),
+                port = Environment.GetEnvironmentVariable("PORT"),
+                aspnetcoreUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS")
+            }
+        };
+        
+        return Results.Ok(debugInfo);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Debug endpoint error: {ex.Message}");
+    }
+})
+.WithName("ConnectionDebug")
+.WithTags("Debug")
+.WithOpenApi(operation => new(operation)
+{
+    Summary = "Debug connection string resolution",
+    Description = "Shows how the database connection string is being resolved (passwords masked)"
+});
+
+// Test connection endpoint for Supabase debugging
+app.MapGet("/debug/test-connection", async (IConfiguration configuration) =>
+{
+    try
+    {
+        var connectionString = Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.GetPostgresConnectionString(configuration);
+        
+        using var connection = new Npgsql.NpgsqlConnection(connectionString);
+        
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await connection.OpenAsync();
+        stopwatch.Stop();
+        
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 'Connection successful!' as message";
+        var testQuery = (string)(await command.ExecuteScalarAsync() ?? "");
+        
+        return Results.Ok(new
+        {
+            status = "SUCCESS",
+            message = testQuery,
+            connectionTime = $"{stopwatch.ElapsedMilliseconds}ms",
+            serverVersion = connection.ServerVersion,
+            database = connection.Database,
+            host = connection.Host,
+            port = connection.Port,
+            timestamp = DateTime.UtcNow
+        });
+    }
+    catch (Exception ex)
+    {
+        // Try fallback connection for Supabase
+        var originalUrl = Environment.GetEnvironmentVariable("DATABASE_URL") ?? configuration.GetConnectionString("Postgres");
+        if (!string.IsNullOrEmpty(originalUrl) && originalUrl.Contains("supabase.com"))
+        {
+            try
+            {
+                var fallbackConnection = Shared.Kernel.Infrastructure.Database.ConnectionStringHelper.CreateSupabaseFallbackConnection(originalUrl);
+                if (!string.IsNullOrEmpty(fallbackConnection))
+                {
+                    using var connection = new Npgsql.NpgsqlConnection(fallbackConnection);
+                    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                    await connection.OpenAsync();
+                    stopwatch.Stop();
+                    
+                    using var command = connection.CreateCommand();
+                    command.CommandText = "SELECT 'Fallback connection successful!' as message";
+                    var testQuery = (string)(await command.ExecuteScalarAsync() ?? "");
+                    
+                    return Results.Ok(new
+                    {
+                        status = "SUCCESS_FALLBACK",
+                        message = testQuery,
+                        connectionTime = $"{stopwatch.ElapsedMilliseconds}ms",
+                        serverVersion = connection.ServerVersion,
+                        database = connection.Database,
+                        host = connection.Host,
+                        port = connection.Port,
+                        originalError = ex.Message,
+                        timestamp = DateTime.UtcNow
+                    });
+                }
+            }
+            catch (Exception fallbackEx)
+            {
+                return Results.Problem($"Both primary and fallback connections failed. Primary: {ex.Message}. Fallback: {fallbackEx.Message}");
+            }
+        }
+        
+        return Results.Problem($"Connection failed: {ex.Message}");
+    }
+})
+.WithName("TestConnection")
+.WithTags("Debug")
+.WithOpenApi(operation => new(operation)
+{
+    Summary = "Test database connection",
+    Description = "Attempts to connect to the database and run a simple query, with automatic Supabase fallback"
+});
 
 app.Run();
