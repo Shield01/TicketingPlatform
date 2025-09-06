@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Shared.Kernel.Constants;
+using Shared.Kernel.Extensions;
 using DotNetEnv;
 
 // Load environment variables from .env file
@@ -29,6 +30,9 @@ builder.Services.AddControllers()
     .AddApplicationPart(typeof(Modules.EventService.Controllers.EventController).Assembly)
     .AddApplicationPart(typeof(Modules.TicketService.Controllers.TicketController).Assembly)
     .AddApplicationPart(typeof(Modules.PaymentService.Controllers.PaymentController).Assembly);
+
+// Configure CORS
+builder.Services.AddConfiguredCors(builder.Configuration, builder.Environment);
 
 // Configure Swagger/OpenAPI
 builder.Services.AddSwaggerGen(options =>
@@ -214,6 +218,9 @@ if (app.Environment.IsDevelopment())
         options.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
     });
 }
+
+// Use CORS middleware (must be before authentication)
+app.UseConfiguredCors();
 
 // Use authentication and authorization middleware
 app.UseAuthentication();
