@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Modules.TicketService.Data;
+using Modules.TicketService.Repositories;
+using Modules.TicketService.Services;
 using Shared.Kernel.Infrastructure.Database;
 
 namespace Modules.TicketService.Services
@@ -31,9 +33,9 @@ namespace Modules.TicketService.Services
                     options.UseInMemoryDatabase("TicketServiceDb"));
             }
 
-            // TODO: Register repositories and services when implemented
-            // services.AddScoped<ITicketRepository, TicketRepository>();
-            // services.AddScoped<ITicketService, TicketService>();
+            // Register repositories and services
+            services.AddScoped<ITicketTierRepository, TicketTierRepository>();
+            services.AddScoped<ITicketTierService, TicketTierService>();
 
             return services;
         }

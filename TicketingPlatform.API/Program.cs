@@ -194,8 +194,8 @@ builder.Services.AddHealthChecks()
 // Register module services with configuration
 builder.Services.AddUserModule(builder.Configuration);
 builder.Services.AddTeamModule(builder.Configuration);
-builder.Services.AddEventModule(builder.Configuration);
 builder.Services.AddTicketModule(builder.Configuration);
+builder.Services.AddEventModule(builder.Configuration);
 builder.Services.AddPaymentModule(builder.Configuration);
 
 var app = builder.Build();

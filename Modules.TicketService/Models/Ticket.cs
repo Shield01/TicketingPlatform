@@ -25,11 +25,15 @@ namespace Modules.TicketService.Models
         public Guid UserId { get; set; }
 
         /// <summary>
-        /// The tier of the ticket (VIP, Regular, Early Bird, etc.).
+        /// The unique identifier of the ticket tier this ticket belongs to.
         /// </summary>
         [Required]
-        [StringLength(50)]
-        public string TicketTier { get; set; } = string.Empty;
+        public Guid TicketTierId { get; set; }
+
+        /// <summary>
+        /// Navigation property for the ticket tier.
+        /// </summary>
+        public virtual TicketTier? TicketTier { get; set; }
 
         /// <summary>
         /// The price of the ticket.

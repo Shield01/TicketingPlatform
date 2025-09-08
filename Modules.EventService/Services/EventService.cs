@@ -3,6 +3,7 @@ using Modules.EventService.DTOs;
 using Modules.EventService.Models;
 using Modules.EventService.Repositories;
 using Modules.TeamService.Services;
+using Modules.TicketService.Services;
 
 namespace Modules.EventService.Services
 {
@@ -13,6 +14,7 @@ namespace Modules.EventService.Services
     {
         private readonly IEventRepository _eventRepository;
         private readonly ITeamService _teamService;
+        private readonly ITicketTierService _ticketTierService;
         private readonly ILogger<EventService> _logger;
 
         /// <summary>
@@ -20,11 +22,13 @@ namespace Modules.EventService.Services
         /// </summary>
         /// <param name="eventRepository">The event repository.</param>
         /// <param name="teamService">The team service.</param>
+        /// <param name="ticketTierService">The ticket tier service.</param>
         /// <param name="logger">The logger instance.</param>
-        public EventService(IEventRepository eventRepository, ITeamService teamService, ILogger<EventService> logger)
+        public EventService(IEventRepository eventRepository, ITeamService teamService, ITicketTierService ticketTierService, ILogger<EventService> logger)
         {
             _eventRepository = eventRepository ?? throw new ArgumentNullException(nameof(eventRepository));
             _teamService = teamService ?? throw new ArgumentNullException(nameof(teamService));
+            _ticketTierService = ticketTierService ?? throw new ArgumentNullException(nameof(ticketTierService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -94,7 +98,7 @@ namespace Modules.EventService.Services
                 var createdEvent = await _eventRepository.CreateEventAsync(@event);
 
                 // Convert to response DTO
-                var response = MapEventToResponse(createdEvent);
+                var response = await MapEventToResponseAsync(createdEvent);
 
                 _logger.LogInformation("Event created successfully: {EventId}", createdEvent.Id);
                 return response;
@@ -124,7 +128,7 @@ namespace Modules.EventService.Services
                     return null;
                 }
 
-                return MapEventToResponse(@event);
+                return await MapEventToResponseAsync(@event);
             }
             catch (Exception ex)
             {
@@ -151,7 +155,7 @@ namespace Modules.EventService.Services
                     return null;
                 }
 
-                return MapEventToResponse(@event);
+                return await MapEventToResponseAsync(@event);
             }
             catch (Exception ex)
             {
@@ -172,7 +176,8 @@ namespace Modules.EventService.Services
                 _logger.LogDebug("Getting events for organizer: {OrganizerId}", organizerId);
 
                 var events = await _eventRepository.GetEventsByOrganizerAsync(organizerId);
-                return events.Select(MapEventToResponse);
+                var tasks = events.Select(async e => await MapEventToResponseAsync(e));
+                return await Task.WhenAll(tasks);
             }
             catch (Exception ex)
             {
@@ -192,7 +197,8 @@ namespace Modules.EventService.Services
                 _logger.LogDebug("Getting public events");
 
                 var events = await _eventRepository.GetPublicEventsAsync();
-                return events.Select(MapEventToResponse);
+                var tasks = events.Select(async e => await MapEventToResponseAsync(e));
+                return await Task.WhenAll(tasks);
             }
             catch (Exception ex)
             {
@@ -298,7 +304,7 @@ namespace Modules.EventService.Services
                 var updatedEvent = await _eventRepository.UpdateEventAsync(existingEvent);
 
                 _logger.LogInformation("Event updated successfully: {EventId}", id);
-                return MapEventToResponse(updatedEvent);
+                return await MapEventToResponseAsync(updatedEvent);
             }
             catch (Exception ex)
             {
@@ -406,8 +412,32 @@ namespace Modules.EventService.Services
         /// </summary>
         /// <param name="event">The event entity to map.</param>
         /// <returns>The mapped EventResponse.</returns>
-        private static EventResponse MapEventToResponse(Event @event)
+        private async Task<EventResponse> MapEventToResponseAsync(Event @event)
         {
+            // Get ticket tiers for this event
+            var ticketTiers = new List<EventTicketTierResponse>();
+            try
+            {
+                var tiers = await _ticketTierService.GetEventTicketTiersAsync(@event.Id);
+                ticketTiers = tiers.Select(t => new EventTicketTierResponse
+                {
+                    Id = t.Id,
+                    Name = t.Name,
+                    Description = t.Description,
+                    Price = t.Price,
+                    Currency = t.Currency,
+                    MaxQuantity = t.MaxQuantity,
+                    SoldQuantity = t.SoldQuantity,
+                    IsAvailable = t.IsAvailable,
+                    CreatedAt = t.CreatedAt
+                }).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load ticket tiers for event {EventId}", @event.Id);
+                // Continue without ticket tiers if there's an error
+            }
+
             return new EventResponse
             {
                 Id = @event.Id,
@@ -423,7 +453,10 @@ namespace Modules.EventService.Services
                 OrganizerId = @event.OrganizerId,
                 CreatedAt = @event.CreatedAt,
                 UpdatedAt = @event.UpdatedAt,
-                OrganizerName = string.Empty // TODO: Load organizer name from UserService if needed
+                OrganizerName = @event.Organizer != null 
+                    ? $"{@event.Organizer.FirstName} {@event.Organizer.LastName}".Trim()
+                    : string.Empty,
+                TicketTiers = ticketTiers
             };
         }
 
@@ -447,7 +480,9 @@ namespace Modules.EventService.Services
                 EndDate = @event.EndDate,
                 Location = @event.Location,
                 Category = @event.Category,
-                OrganizerName = string.Empty, // TODO: Load organizer name from UserService if needed
+                OrganizerName = @event.Organizer != null 
+                    ? $"{@event.Organizer.FirstName} {@event.Organizer.LastName}".Trim()
+                    : string.Empty,
                 CreatedAt = @event.CreatedAt,
                 IsUpcoming = isUpcoming,
                 DaysUntilEvent = daysUntilEvent
@@ -521,7 +556,8 @@ namespace Modules.EventService.Services
             var (events, totalCount) = await _eventRepository.GetTeamEventsAsync(userTeamIds, normalizedFilter);
 
             // Map to response DTOs
-            var eventResponses = events.Select(MapEventToResponse).ToList();
+            var tasks = events.Select(async e => await MapEventToResponseAsync(e));
+            var eventResponses = (await Task.WhenAll(tasks)).ToList();
 
             // Calculate pagination metadata
             var totalPages = (int)Math.Ceiling((double)totalCount / normalizedFilter.PageSize);
@@ -566,7 +602,7 @@ namespace Modules.EventService.Services
                 return null;
             }
 
-            return MapEventToResponse(@event);
+            return await MapEventToResponseAsync(@event);
         }
 
         /// <summary>
@@ -637,7 +673,7 @@ namespace Modules.EventService.Services
 
             // Update the event
             var updatedEvent = await _eventRepository.UpdateEventAsync(@event);
-            return MapEventToResponse(updatedEvent);
+            return await MapEventToResponseAsync(updatedEvent);
         }
 
         /// <summary>
@@ -756,7 +792,7 @@ namespace Modules.EventService.Services
                 var updatedEvent = await _eventRepository.UpdateEventAsync(@event);
 
                 _logger.LogInformation("Event published successfully: {EventId}", eventId);
-                return MapEventToResponse(updatedEvent);
+                return await MapEventToResponseAsync(updatedEvent);
             }
             catch (Exception ex)
             {
@@ -809,7 +845,7 @@ namespace Modules.EventService.Services
                 var updatedEvent = await _eventRepository.UpdateEventAsync(@event);
 
                 _logger.LogInformation("Event unpublished successfully: {EventId}", eventId);
-                return MapEventToResponse(updatedEvent);
+                return await MapEventToResponseAsync(updatedEvent);
             }
             catch (Exception ex)
             {

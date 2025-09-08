@@ -74,5 +74,10 @@ namespace Modules.EventService.DTOs
         /// The name of the event organizer.
         /// </summary>
         public string OrganizerName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The ticket tiers available for this event.
+        /// </summary>
+        public IEnumerable<EventTicketTierResponse> TicketTiers { get; set; } = new List<EventTicketTierResponse>();
     }
 } 
