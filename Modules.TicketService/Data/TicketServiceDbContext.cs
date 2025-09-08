@@ -122,7 +122,9 @@ namespace Modules.TicketService.Data
                 entity.Property(t => t.Status)
                     .IsRequired()
                     .HasMaxLength(50)
-                    .HasDefaultValue("Active");
+                    .HasDefaultValue("UNUSED");
+
+                entity.Property(t => t.PaymentId);
 
                 entity.Property(t => t.IsActive)
                     .HasDefaultValue(true);
@@ -148,6 +150,7 @@ namespace Modules.TicketService.Data
                 entity.HasIndex(t => t.EventId);
                 entity.HasIndex(t => t.UserId);
                 entity.HasIndex(t => t.TicketTierId);
+                entity.HasIndex(t => t.PaymentId);
                 entity.HasIndex(t => t.IsUsed);
                 entity.HasIndex(t => t.Status);
                 entity.HasIndex(t => t.IsActive);
