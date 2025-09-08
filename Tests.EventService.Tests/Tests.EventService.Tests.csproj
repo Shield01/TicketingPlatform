@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Shared.Kernel\Shared.Kernel.csproj" />
     <ProjectReference Include="..\Modules.EventService\Modules.EventService.csproj" />
+    <ProjectReference Include="..\Modules.TicketService\Modules.TicketService.csproj" />
   </ItemGroup>
 
   <ItemGroup>

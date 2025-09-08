@@ -1,19 +1,15 @@
-namespace Modules.TicketService.DTOs
+namespace Modules.EventService.DTOs
 {
     /// <summary>
-    /// Response model for ticket tier information.
+    /// Response model for ticket tier information within event responses.
+    /// This is a simplified version to avoid circular dependencies with TicketService.
     /// </summary>
-    public class TicketTierResponse
+    public class EventTicketTierResponse
     {
         /// <summary>
         /// The unique identifier of the ticket tier.
         /// </summary>
         public Guid Id { get; set; }
-
-        /// <summary>
-        /// The unique identifier of the event.
-        /// </summary>
-        public Guid EventId { get; set; }
 
         /// <summary>
         /// The name of the ticket tier.
@@ -56,28 +52,8 @@ namespace Modules.TicketService.DTOs
         public bool IsAvailable { get; set; }
 
         /// <summary>
-        /// The date and time when sales for this tier start.
-        /// </summary>
-        public DateTime? SaleStartDate { get; set; }
-
-        /// <summary>
-        /// The date and time when sales for this tier end.
-        /// </summary>
-        public DateTime? SaleEndDate { get; set; }
-
-        /// <summary>
-        /// Whether the ticket tier is active.
-        /// </summary>
-        public bool IsActive { get; set; }
-
-        /// <summary>
         /// The date and time when the ticket tier was created.
         /// </summary>
         public DateTime CreatedAt { get; set; }
-
-        /// <summary>
-        /// The date and time when the ticket tier was last updated.
-        /// </summary>
-        public DateTime UpdatedAt { get; set; }
     }
-} 
+}

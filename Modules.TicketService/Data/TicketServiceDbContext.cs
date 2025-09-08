@@ -78,6 +78,11 @@ namespace Modules.TicketService.Data
                 entity.Property(tt => tt.UpdatedAt)
                     .HasDefaultValueSql("NOW()");
 
+                // Add unique constraint for tier names per event
+                entity.HasIndex(tt => new { tt.EventId, tt.Name })
+                    .IsUnique()
+                    .HasDatabaseName("IX_app_ticket_tiers_event_name_unique");
+
                 // Add indexes for better performance
                 entity.HasIndex(tt => tt.EventId);
                 entity.HasIndex(tt => tt.IsAvailable);
@@ -93,9 +98,7 @@ namespace Modules.TicketService.Data
                 entity.HasKey(t => t.Id);
                 entity.Property(t => t.Id).ValueGeneratedOnAdd();
 
-                entity.Property(t => t.TicketTier)
-                    .IsRequired()
-                    .HasMaxLength(50);
+                // TicketTierId is configured as foreign key through relationships below
 
                 entity.Property(t => t.Price)
                     .IsRequired()
@@ -135,10 +138,16 @@ namespace Modules.TicketService.Data
                     .IsUnique()
                     .HasDatabaseName("IX_app_tickets_ticket_code_unique");
 
+                // Configure foreign key relationship to TicketTier
+                entity.HasOne(t => t.TicketTier)
+                    .WithMany(tt => tt.Tickets)
+                    .HasForeignKey(t => t.TicketTierId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
                 // Add indexes for better performance
                 entity.HasIndex(t => t.EventId);
                 entity.HasIndex(t => t.UserId);
-                entity.HasIndex(t => t.TicketTier);
+                entity.HasIndex(t => t.TicketTierId);
                 entity.HasIndex(t => t.IsUsed);
                 entity.HasIndex(t => t.Status);
                 entity.HasIndex(t => t.IsActive);

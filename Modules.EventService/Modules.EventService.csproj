@@ -12,6 +12,7 @@
     <ProjectReference Include="..\Shared.Kernel\Shared.Kernel.csproj" />
     <ProjectReference Include="..\Modules.UserService\Modules.UserService.csproj" />
     <ProjectReference Include="..\Modules.TeamService\Modules.TeamService.csproj" />
+    <ProjectReference Include="..\Modules.TicketService\Modules.TicketService.csproj" />
   </ItemGroup>
 
   <ItemGroup>

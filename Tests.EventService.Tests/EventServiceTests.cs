@@ -4,6 +4,7 @@ using Modules.EventService.Models;
 using Modules.EventService.Repositories;
 using Modules.EventService.Services;
 using Modules.TeamService.Services;
+using Modules.TicketService.Services;
 using Modules.UserService.Services;
 using Moq;
 using Xunit;
@@ -20,13 +21,20 @@ namespace Tests.EventService.Tests
         private readonly Mock<ILogger<Modules.EventService.Services.EventService>> _mockLogger;
         private readonly Modules.EventService.Services.EventService _eventService;
         private readonly Mock<ITeamService> _mockTeamService;
+        private readonly Mock<ITicketTierService> _mockTicketTierService;
 
         public EventServiceTests()
         {
             _mockEventRepository = new Mock<IEventRepository>();
             _mockLogger = new Mock<ILogger<Modules.EventService.Services.EventService>>();
             _mockTeamService = new Mock<ITeamService>();
-            _eventService = new Modules.EventService.Services.EventService(_mockEventRepository.Object, _mockTeamService.Object, _mockLogger.Object);
+            _mockTicketTierService = new Mock<ITicketTierService>();
+            
+            // Setup default mock behavior for ticket tiers (return empty list)
+            _mockTicketTierService.Setup(s => s.GetEventTicketTiersAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new List<Modules.TicketService.DTOs.TicketTierResponse>());
+            
+            _eventService = new Modules.EventService.Services.EventService(_mockEventRepository.Object, _mockTeamService.Object, _mockTicketTierService.Object, _mockLogger.Object);
         }
 
         [Fact]
