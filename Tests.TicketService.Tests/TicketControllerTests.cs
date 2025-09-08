@@ -1,47 +1,41 @@
-using System;
-using System.Collections.Generic;
-using System.Security.Claims;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Xunit;
 using Modules.TicketService.Controllers;
 using Modules.TicketService.DTOs;
 using Modules.TicketService.Services;
-using Shared.Kernel.Constants;
+using Shared.Kernel.Extensions;
+using System.Security.Claims;
+using Xunit;
 
 namespace Tests.TicketService.Tests
 {
     /// <summary>
-    /// Unit tests for TicketController API endpoints.
+    /// Unit tests for the TicketController.
     /// </summary>
     public class TicketControllerTests
     {
         private readonly Mock<ILogger<TicketController>> _mockLogger;
         private readonly Mock<ITicketTierService> _mockTicketTierService;
+        private readonly Mock<ITicketIssueService> _mockTicketIssueService;
         private readonly TicketController _controller;
 
         public TicketControllerTests()
         {
             _mockLogger = new Mock<ILogger<TicketController>>();
             _mockTicketTierService = new Mock<ITicketTierService>();
-            _controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object);
+            _mockTicketIssueService = new Mock<ITicketIssueService>();
+            _controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object);
 
-            // Setup default user context
-            SetupUserContext(Guid.NewGuid());
-        }
-
-        private void SetupUserContext(Guid userId)
-        {
+            // Setup HttpContext with user claims
+            var userId = Guid.NewGuid();
             var claims = new List<Claim>
             {
-                new Claim(RbacConstants.Claims.UserId, userId.ToString()),
-                new Claim(RbacConstants.Claims.Role, RbacConstants.Roles.Organiser)
+                new Claim("UserId", userId.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString())
             };
-
-            var identity = new ClaimsIdentity(claims, "TestAuth");
+            var identity = new ClaimsIdentity(claims, "Test", nameType: "UserId", roleType: "Role");
             var principal = new ClaimsPrincipal(identity);
 
             _controller.ControllerContext = new ControllerContext
@@ -53,399 +47,558 @@ namespace Tests.TicketService.Tests
             };
         }
 
-        #region CreateEventTicketTier Tests
-
         [Fact]
-        public async Task CreateEventTicketTier_ValidRequest_ReturnsCreatedResult()
+        public async Task IssueTickets_ValidRequest_ShouldReturnCreated()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            SetupUserContext(userId);
+            var request = CreateValidIssueTicketRequest();
+            var response = CreateIssueTicketResponse();
 
-            var request = new CreateTicketTierRequest
-            {
-                Name = "VIP",
-                Description = "Premium access",
-                Price = 150.00m,
-                Currency = "USD",
-                MaxQuantity = 50,
-                IsAvailable = true
-            };
-
-            var expectedResponse = new TicketTierResponse
-            {
-                Id = Guid.NewGuid(),
-                EventId = eventId,
-                Name = request.Name,
-                Description = request.Description,
-                Price = request.Price,
-                Currency = request.Currency,
-                MaxQuantity = request.MaxQuantity,
-                SoldQuantity = 0,
-                IsAvailable = request.IsAvailable,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            _mockTicketTierService.Setup(s => s.CreateTicketTierAsync(eventId, request, userId))
-                .ReturnsAsync(expectedResponse);
+            _mockTicketIssueService.Setup(s => s.IssueTicketsAsync(request))
+                .ReturnsAsync(response);
 
             // Act
-            var result = await _controller.CreateEventTicketTier(eventId, request);
+            var result = await _controller.IssueTickets(request);
 
             // Assert
             var createdResult = Assert.IsType<CreatedAtActionResult>(result);
-            Assert.Equal(nameof(_controller.GetEventTickets), createdResult.ActionName);
-            Assert.NotNull(createdResult.RouteValues);
-            Assert.True(createdResult.RouteValues.ContainsKey("eventId"));
-            Assert.Equal(eventId, createdResult.RouteValues["eventId"]);
-
-            var response = Assert.IsType<TicketTierResponse>(createdResult.Value);
-            Assert.Equal(expectedResponse.Id, response.Id);
-            Assert.Equal(expectedResponse.Name, response.Name);
-            Assert.Equal(expectedResponse.Price, response.Price);
-
-            _mockTicketTierService.Verify(s => s.CreateTicketTierAsync(eventId, request, userId), Times.Once);
+            var returnedResponse = Assert.IsType<IssueTicketResponse>(createdResult.Value);
+            Assert.Equal(response.TicketsIssued, returnedResponse.TicketsIssued);
+            Assert.Equal(response.PaymentId, returnedResponse.PaymentId);
         }
 
         [Fact]
-        public async Task CreateEventTicketTier_NoUserId_ReturnsUnauthorized()
+        public async Task IssueTickets_InvalidRequest_ShouldReturnBadRequest()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
-            var request = new CreateTicketTierRequest
-            {
-                Name = "VIP",
-                Price = 150.00m,
-                MaxQuantity = 50
-            };
-
-            // Setup controller with no user claims
-            _controller.ControllerContext = new ControllerContext
-            {
-                HttpContext = new DefaultHttpContext()
-            };
+            var request = CreateValidIssueTicketRequest();
+            _mockTicketIssueService.Setup(s => s.IssueTicketsAsync(request))
+                .ThrowsAsync(new ArgumentException("Invalid request"));
 
             // Act
-            var result = await _controller.CreateEventTicketTier(eventId, request);
-
-            // Assert
-            var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
-            Assert.Equal("User not authenticated.", unauthorizedResult.Value);
-        }
-
-        [Fact]
-        public async Task CreateEventTicketTier_InvalidRequest_ReturnsBadRequest()
-        {
-            // Arrange
-            var eventId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            SetupUserContext(userId);
-
-            var request = new CreateTicketTierRequest
-            {
-                Name = "VIP",
-                Price = 150.00m,
-                MaxQuantity = 50
-            };
-
-            _mockTicketTierService.Setup(s => s.CreateTicketTierAsync(eventId, request, userId))
-                .ThrowsAsync(new ArgumentException("Price must be greater than 0."));
-
-            // Act
-            var result = await _controller.CreateEventTicketTier(eventId, request);
+            var result = await _controller.IssueTickets(request);
 
             // Assert
             var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.NotNull(badRequestResult.Value);
-            
-            var error = badRequestResult.Value.GetType().GetProperty("error")?.GetValue(badRequestResult.Value)?.ToString();
-            Assert.Equal("Price must be greater than 0.", error);
+            var errorResponse = badRequestResult.Value;
+            Assert.NotNull(errorResponse);
         }
 
         [Fact]
-        public async Task CreateEventTicketTier_DuplicateName_ReturnsConflict()
+        public async Task IssueTickets_InsufficientCapacity_ShouldReturnConflict()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            SetupUserContext(userId);
-
-            var request = new CreateTicketTierRequest
-            {
-                Name = "VIP",
-                Price = 150.00m,
-                MaxQuantity = 50
-            };
-
-            _mockTicketTierService.Setup(s => s.CreateTicketTierAsync(eventId, request, userId))
-                .ThrowsAsync(new InvalidOperationException("A ticket tier with the name 'VIP' already exists for this event."));
+            var request = CreateValidIssueTicketRequest();
+            _mockTicketIssueService.Setup(s => s.IssueTicketsAsync(request))
+                .ThrowsAsync(new InvalidOperationException("Insufficient capacity"));
 
             // Act
-            var result = await _controller.CreateEventTicketTier(eventId, request);
+            var result = await _controller.IssueTickets(request);
 
             // Assert
             var conflictResult = Assert.IsType<ConflictObjectResult>(result);
-            Assert.NotNull(conflictResult.Value);
-            
-            var error = conflictResult.Value.GetType().GetProperty("error")?.GetValue(conflictResult.Value)?.ToString();
-            Assert.Contains("already exists", error);
+            var errorResponse = conflictResult.Value;
+            Assert.NotNull(errorResponse);
         }
 
         [Fact]
-        public async Task CreateEventTicketTier_UnauthorizedAccess_ReturnsForbid()
+        public async Task IssueTickets_UnexpectedError_ShouldReturnInternalServerError()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            SetupUserContext(userId);
-
-            var request = new CreateTicketTierRequest
-            {
-                Name = "VIP",
-                Price = 150.00m,
-                MaxQuantity = 50
-            };
-
-            _mockTicketTierService.Setup(s => s.CreateTicketTierAsync(eventId, request, userId))
-                .ThrowsAsync(new UnauthorizedAccessException("User not authorized to create ticket tiers for this event."));
+            var request = CreateValidIssueTicketRequest();
+            _mockTicketIssueService.Setup(s => s.IssueTicketsAsync(request))
+                .ThrowsAsync(new Exception("Unexpected error"));
 
             // Act
-            var result = await _controller.CreateEventTicketTier(eventId, request);
+            var result = await _controller.IssueTickets(request);
 
             // Assert
-            var forbidResult = Assert.IsType<ForbidResult>(result);
-            Assert.NotNull(forbidResult);
+            var statusCodeResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(500, statusCodeResult.StatusCode);
         }
 
         [Fact]
-        public async Task CreateEventTicketTier_InternalError_ReturnsInternalServerError()
+        public async Task IssueTickets_NoPaymentIdProvided_ShouldStillSucceed()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            SetupUserContext(userId);
+            var request = CreateValidIssueTicketRequest(includePaymentId: false);
+            var response = CreateIssueTicketResponse();
 
-            var request = new CreateTicketTierRequest
-            {
-                Name = "VIP",
-                Price = 150.00m,
-                MaxQuantity = 50
-            };
-
-            _mockTicketTierService.Setup(s => s.CreateTicketTierAsync(eventId, request, userId))
-                .ThrowsAsync(new Exception("Database connection error"));
+            _mockTicketIssueService.Setup(s => s.IssueTicketsAsync(It.IsAny<IssueTicketRequest>()))
+                .ReturnsAsync(response);
 
             // Act
-            var result = await _controller.CreateEventTicketTier(eventId, request);
+            var result = await _controller.IssueTickets(request);
 
             // Assert
-            var statusResult = Assert.IsType<ObjectResult>(result);
-            Assert.Equal(500, statusResult.StatusCode);
-            Assert.NotNull(statusResult.Value);
-            
-            var error = statusResult.Value.GetType().GetProperty("error")?.GetValue(statusResult.Value)?.ToString();
-            Assert.Equal("An error occurred while creating the ticket tier.", error);
+            var createdResult = Assert.IsType<CreatedAtActionResult>(result);
+            var returnedResponse = Assert.IsType<IssueTicketResponse>(createdResult.Value);
+            Assert.Equal(response.TicketsIssued, returnedResponse.TicketsIssued);
+
+            // Verify the service was called (PaymentId auto-generation happens in service layer)
+            _mockTicketIssueService.Verify(s => s.IssueTicketsAsync(It.IsAny<IssueTicketRequest>()), Times.Once);
         }
 
-        #endregion
-
-        #region GetEventTickets Tests
-
         [Fact]
-        public async Task GetEventTickets_ValidEventId_ReturnsOkWithTickets()
+        public async Task GetUserTickets_ValidRequest_ShouldReturnOk()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
-            var expectedTiers = new List<TicketTierResponse>
-            {
-                new TicketTierResponse
-                {
-                    Id = Guid.NewGuid(),
-                    EventId = eventId,
-                    Name = "VIP",
-                    Price = 150.00m,
-                    MaxQuantity = 50,
-                    SoldQuantity = 10,
-                    IsAvailable = true
-                },
-                new TicketTierResponse
-                {
-                    Id = Guid.NewGuid(),
-                    EventId = eventId,
-                    Name = "Regular",
-                    Price = 75.00m,
-                    MaxQuantity = 200,
-                    SoldQuantity = 50,
-                    IsAvailable = true
-                }
-            };
+            var userId = GetUserIdFromContext();
+            var response = CreateUserTicketsResponse(userId);
 
-            _mockTicketTierService.Setup(s => s.GetEventTicketTiersAsync(eventId))
-                .ReturnsAsync(expectedTiers);
+            _mockTicketIssueService.Setup(s => s.GetUserTicketsAsync(userId, 1, 10, null))
+                .ReturnsAsync(response);
 
             // Act
-            var result = await _controller.GetEventTickets(eventId);
+            var result = await _controller.GetUserTickets();
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
-            var tiers = Assert.IsAssignableFrom<IEnumerable<TicketTierResponse>>(okResult.Value);
-            
-            var tiersList = tiers.ToList();
-            Assert.Equal(2, tiersList.Count);
-            Assert.Equal("VIP", tiersList[0].Name);
-            Assert.Equal("Regular", tiersList[1].Name);
-
-            _mockTicketTierService.Verify(s => s.GetEventTicketTiersAsync(eventId), Times.Once);
+            var returnedResponse = Assert.IsType<UserTicketsResponse>(okResult.Value);
+            Assert.Equal(userId, returnedResponse.UserId);
+            Assert.Equal(response.TotalTickets, returnedResponse.TotalTickets);
         }
 
         [Fact]
-        public async Task GetEventTickets_InvalidEventId_ReturnsBadRequest()
+        public async Task GetUserTickets_WithPagination_ShouldPassParameters()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
+            var userId = GetUserIdFromContext();
+            var page = 2;
+            var pageSize = 5;
+            var status = "UNUSED";
+            var response = CreateUserTicketsResponse(userId);
 
-            _mockTicketTierService.Setup(s => s.GetEventTicketTiersAsync(eventId))
-                .ThrowsAsync(new ArgumentException("Event ID cannot be empty."));
+            _mockTicketIssueService.Setup(s => s.GetUserTicketsAsync(userId, page, pageSize, status))
+                .ReturnsAsync(response);
 
             // Act
-            var result = await _controller.GetEventTickets(eventId);
+            var result = await _controller.GetUserTickets(page, pageSize, status);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            _mockTicketIssueService.Verify(s => s.GetUserTicketsAsync(userId, page, pageSize, status), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetUserTickets_ServiceError_ShouldReturnInternalServerError()
+        {
+            // Arrange
+            var userId = GetUserIdFromContext();
+            _mockTicketIssueService.Setup(s => s.GetUserTicketsAsync(userId, 1, 10, null))
+                .ThrowsAsync(new Exception("Service error"));
+
+            // Act
+            var result = await _controller.GetUserTickets();
+
+            // Assert
+            var statusCodeResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(500, statusCodeResult.StatusCode);
+        }
+
+        [Fact]
+        public async Task GetTicketById_ValidRequest_ShouldReturnOk()
+        {
+            // Arrange
+            var userId = GetUserIdFromContext();
+            var ticketId = Guid.NewGuid();
+            var ticketResponse = CreateTicketResponse(ticketId, userId);
+
+            _mockTicketIssueService.Setup(s => s.GetTicketByIdAsync(ticketId, userId))
+                .ReturnsAsync(ticketResponse);
+
+            // Act
+            var result = await _controller.GetTicketById(ticketId);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var returnedTicket = Assert.IsType<TicketResponse>(okResult.Value);
+            Assert.Equal(ticketId, returnedTicket.Id);
+            Assert.Equal(userId, returnedTicket.UserId);
+        }
+
+        [Fact]
+        public async Task GetTicketById_TicketNotFound_ShouldReturnNotFound()
+        {
+            // Arrange
+            var userId = GetUserIdFromContext();
+            var ticketId = Guid.NewGuid();
+
+            _mockTicketIssueService.Setup(s => s.GetTicketByIdAsync(ticketId, userId))
+                .ReturnsAsync((TicketResponse?)null);
+
+            // Act
+            var result = await _controller.GetTicketById(ticketId);
+
+            // Assert
+            var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+            var errorResponse = notFoundResult.Value;
+            Assert.NotNull(errorResponse);
+        }
+
+        [Fact]
+        public async Task CancelTicket_ValidRequest_ShouldReturnOk()
+        {
+            // Arrange
+            var userId = GetUserIdFromContext();
+            var ticketId = Guid.NewGuid();
+
+            _mockTicketIssueService.Setup(s => s.CancelTicketAsync(ticketId, userId))
+                .ReturnsAsync(true);
+
+            // Act
+            var result = await _controller.CancelTicket(ticketId);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var successResponse = okResult.Value;
+            Assert.NotNull(successResponse);
+        }
+
+        [Fact]
+        public async Task CancelTicket_CancellationFailed_ShouldReturnBadRequest()
+        {
+            // Arrange
+            var userId = GetUserIdFromContext();
+            var ticketId = Guid.NewGuid();
+
+            _mockTicketIssueService.Setup(s => s.CancelTicketAsync(ticketId, userId))
+                .ReturnsAsync(false);
+
+            // Act
+            var result = await _controller.CancelTicket(ticketId);
 
             // Assert
             var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.NotNull(badRequestResult.Value);
-            
-            var error = badRequestResult.Value.GetType().GetProperty("error")?.GetValue(badRequestResult.Value)?.ToString();
-            Assert.Equal("Event ID cannot be empty.", error);
+            var errorResponse = badRequestResult.Value;
+            Assert.NotNull(errorResponse);
         }
 
         [Fact]
-        public async Task GetEventTickets_ServiceError_ReturnsInternalServerError()
+        public async Task CancelTicket_UnauthorizedAccess_ShouldReturnNotFound()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
+            var userId = GetUserIdFromContext();
+            var ticketId = Guid.NewGuid();
 
-            _mockTicketTierService.Setup(s => s.GetEventTicketTiersAsync(eventId))
-                .ThrowsAsync(new Exception("Database error"));
+            _mockTicketIssueService.Setup(s => s.CancelTicketAsync(ticketId, userId))
+                .ThrowsAsync(new UnauthorizedAccessException("Not authorized"));
 
             // Act
-            var result = await _controller.GetEventTickets(eventId);
+            var result = await _controller.CancelTicket(ticketId);
 
             // Assert
-            var statusResult = Assert.IsType<ObjectResult>(result);
-            Assert.Equal(500, statusResult.StatusCode);
-            Assert.NotNull(statusResult.Value);
-            
-            var error = statusResult.Value.GetType().GetProperty("error")?.GetValue(statusResult.Value)?.ToString();
-            Assert.Equal("An error occurred while retrieving ticket tiers.", error);
+            var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+            var errorResponse = notFoundResult.Value;
+            Assert.NotNull(errorResponse);
         }
 
         [Fact]
-        public async Task GetEventTickets_NoTiers_ReturnsEmptyList()
+        public async Task CancelTicket_InvalidOperation_ShouldReturnBadRequest()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
-            var emptyTiers = new List<TicketTierResponse>();
+            var userId = GetUserIdFromContext();
+            var ticketId = Guid.NewGuid();
 
-            _mockTicketTierService.Setup(s => s.GetEventTicketTiersAsync(eventId))
-                .ReturnsAsync(emptyTiers);
+            _mockTicketIssueService.Setup(s => s.CancelTicketAsync(ticketId, userId))
+                .ThrowsAsync(new InvalidOperationException("Cannot cancel used ticket"));
 
             // Act
-            var result = await _controller.GetEventTickets(eventId);
+            var result = await _controller.CancelTicket(ticketId);
+
+            // Assert
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            var errorResponse = badRequestResult.Value;
+            Assert.NotNull(errorResponse);
+        }
+
+        [Fact]
+        public async Task VerifyTicket_ValidTicket_ShouldReturnOk()
+        {
+            // Arrange
+            var request = new TicketVerificationRequest { TicketCode = "TKT-20241201-TEST1234" };
+            var response = new TicketVerificationResponse
+            {
+                IsValid = true,
+                TicketId = Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Test Event",
+                Message = "Ticket verified successfully"
+            };
+
+            _mockTicketIssueService.Setup(s => s.VerifyTicketAsync(request))
+                .ReturnsAsync(response);
+
+            // Act
+            var result = await _controller.VerifyTicket(request);
 
             // Assert
             var okResult = Assert.IsType<OkObjectResult>(result);
-            var tiers = Assert.IsAssignableFrom<IEnumerable<TicketTierResponse>>(okResult.Value);
-            Assert.Empty(tiers);
+            var returnedResponse = Assert.IsType<TicketVerificationResponse>(okResult.Value);
+            Assert.True(returnedResponse.IsValid);
+            Assert.Equal(response.TicketId, returnedResponse.TicketId);
         }
 
-        #endregion
-
-        #region Integration Tests
-
         [Fact]
-        public async Task CreateAndGetTicketTier_Integration_Success()
+        public async Task VerifyTicket_InvalidTicket_ShouldReturnBadRequest()
         {
             // Arrange
-            var eventId = Guid.NewGuid();
-            var userId = Guid.NewGuid();
-            SetupUserContext(userId);
-
-            var createRequest = new CreateTicketTierRequest
+            var request = new TicketVerificationRequest { TicketCode = "INVALID" };
+            var response = new TicketVerificationResponse
             {
-                Name = "Early Bird",
-                Description = "Limited time offer",
-                Price = 50.00m,
-                Currency = "USD",
-                MaxQuantity = 100,
-                IsAvailable = true
+                IsValid = false,
+                Message = "Ticket not found"
             };
 
-            var createdTier = new TicketTierResponse
+            _mockTicketIssueService.Setup(s => s.VerifyTicketAsync(request))
+                .ReturnsAsync(response);
+
+            // Act
+            var result = await _controller.VerifyTicket(request);
+
+            // Assert
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            var returnedResponse = Assert.IsType<TicketVerificationResponse>(badRequestResult.Value);
+            Assert.False(returnedResponse.IsValid);
+        }
+
+        [Fact]
+        public async Task VerifyTicket_ServiceError_ShouldReturnInternalServerError()
+        {
+            // Arrange
+            var request = new TicketVerificationRequest { TicketCode = "TKT-20241201-TEST1234" };
+
+            _mockTicketIssueService.Setup(s => s.VerifyTicketAsync(request))
+                .ThrowsAsync(new Exception("Service error"));
+
+            // Act
+            var result = await _controller.VerifyTicket(request);
+
+            // Assert
+            var statusCodeResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(500, statusCodeResult.StatusCode);
+        }
+
+        [Fact]
+        public async Task CreateTicketTiers_AllTiersSuccessful_ShouldReturnCreated()
+        {
+            // Arrange
+            var userId = GetUserIdFromContext();
+            var request = CreateTicketTiersRequest();
+            var expectedResponses = new List<TicketTierResponse>
+            {
+                CreateTicketTierResponse("VIP"),
+                CreateTicketTierResponse("Regular")
+            };
+
+            _mockTicketTierService.Setup(s => s.CreateTicketTierAsync(
+                It.IsAny<Guid>(), It.IsAny<CreateTicketTierRequest>(), userId))
+                .ReturnsAsync((Guid eventId, CreateTicketTierRequest req, Guid userId) => 
+                    expectedResponses.First(r => r.Name == req.Name));
+
+            // Act
+            var result = await _controller.CreateTicketTiers(request);
+
+            // Assert
+            var createdResult = Assert.IsType<CreatedAtActionResult>(result);
+            var returnedTiers = Assert.IsType<List<TicketTierResponse>>(createdResult.Value);
+            Assert.Equal(2, returnedTiers.Count);
+            Assert.Contains(returnedTiers, t => t.Name == "VIP");
+            Assert.Contains(returnedTiers, t => t.Name == "Regular");
+
+            _mockTicketTierService.Verify(s => s.CreateTicketTierAsync(
+                It.IsAny<Guid>(), It.IsAny<CreateTicketTierRequest>(), userId), Times.Exactly(2));
+        }
+
+        [Fact]
+        public async Task CreateTicketTiers_PartialSuccess_ShouldReturnOkWithDetails()
+        {
+            // Arrange
+            var userId = GetUserIdFromContext();
+            var request = CreateTicketTiersRequest();
+            var successResponse = CreateTicketTierResponse("VIP");
+
+            _mockTicketTierService.SetupSequence(s => s.CreateTicketTierAsync(
+                It.IsAny<Guid>(), It.IsAny<CreateTicketTierRequest>(), userId))
+                .ReturnsAsync(successResponse)
+                .ThrowsAsync(new InvalidOperationException("Tier name already exists"));
+
+            // Act
+            var result = await _controller.CreateTicketTiers(request);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var response = okResult.Value;
+            Assert.NotNull(response);
+
+            // Use dynamic to access anonymous type properties
+            dynamic dynamicResponse = response!;
+            var message = dynamicResponse.message as string;
+            var createdTiers = dynamicResponse.createdTiers as List<TicketTierResponse>;
+            var errors = dynamicResponse.errors as List<string>;
+
+            Assert.Contains("Partially created 1 out of 2", message);
+            Assert.Single(createdTiers);
+            Assert.Single(errors);
+            Assert.Equal("VIP", createdTiers!.First().Name);
+
+            _mockTicketTierService.Verify(s => s.CreateTicketTierAsync(
+                It.IsAny<Guid>(), It.IsAny<CreateTicketTierRequest>(), userId), Times.Exactly(2));
+        }
+
+        [Fact]
+        public async Task CreateTicketTiers_AllTiersFail_ShouldReturnBadRequest()
+        {
+            // Arrange
+            var userId = GetUserIdFromContext();
+            var request = CreateTicketTiersRequest();
+
+            _mockTicketTierService.Setup(s => s.CreateTicketTierAsync(
+                It.IsAny<Guid>(), It.IsAny<CreateTicketTierRequest>(), userId))
+                .ThrowsAsync(new ArgumentException("Invalid tier data"));
+
+            // Act
+            var result = await _controller.CreateTicketTiers(request);
+
+            // Assert
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            var errorResponse = badRequestResult.Value;
+            Assert.NotNull(errorResponse);
+
+            _mockTicketTierService.Verify(s => s.CreateTicketTierAsync(
+                It.IsAny<Guid>(), It.IsAny<CreateTicketTierRequest>(), userId), Times.Exactly(2));
+        }
+
+        [Fact]
+        public async Task CreateTicketTiers_UnexpectedError_ShouldReturnInternalServerError()
+        {
+            // Arrange
+            var userId = GetUserIdFromContext();
+            var request = CreateTicketTiersRequest();
+
+            _mockTicketTierService.Setup(s => s.CreateTicketTierAsync(
+                It.IsAny<Guid>(), It.IsAny<CreateTicketTierRequest>(), userId))
+                .ThrowsAsync(new Exception("Database connection failed"));
+
+            // Act
+            var result = await _controller.CreateTicketTiers(request);
+
+            // Assert
+            var statusCodeResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(500, statusCodeResult.StatusCode);
+        }
+
+        private Guid GetUserIdFromContext()
+        {
+            var userIdClaim = _controller.HttpContext.User.FindFirst("UserId");
+            return Guid.Parse(userIdClaim!.Value);
+        }
+
+        private static IssueTicketRequest CreateValidIssueTicketRequest(bool includePaymentId = true)
+        {
+            return new IssueTicketRequest
+            {
+                EventId = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                TicketTierId = Guid.NewGuid(),
+                Price = 50.00m,
+                Currency = "USD",
+                PaymentId = includePaymentId ? Guid.NewGuid() : null,
+                Quantity = 1
+            };
+        }
+
+        private static IssueTicketResponse CreateIssueTicketResponse()
+        {
+            return new IssueTicketResponse
+            {
+                Tickets = new List<TicketResponse> { CreateTicketResponse() },
+                TicketsIssued = 1,
+                TotalPrice = 50.00m,
+                Currency = "USD",
+                PaymentId = Guid.NewGuid(),
+                IssuedAt = DateTime.UtcNow,
+                Message = "Tickets issued successfully"
+            };
+        }
+
+        private static UserTicketsResponse CreateUserTicketsResponse(Guid userId)
+        {
+            return new UserTicketsResponse
+            {
+                UserId = userId,
+                Tickets = new List<TicketResponse> { CreateTicketResponse(userId: userId) },
+                TotalTickets = 1,
+                UnusedTickets = 1,
+                UsedTickets = 0,
+                CancelledTickets = 0,
+                Page = 1,
+                PageSize = 10
+            };
+        }
+
+        private static TicketResponse CreateTicketResponse(Guid? id = null, Guid? userId = null)
+        {
+            return new TicketResponse
+            {
+                Id = id ?? Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Test Event",
+                UserId = userId ?? Guid.NewGuid(),
+                TicketTierId = Guid.NewGuid(),
+                TierName = "Test Tier",
+                Price = 50.00m,
+                Currency = "USD",
+                TicketCode = "TKT-20241201-TEST1234",
+                Status = "UNUSED",
+                IssuedAt = DateTime.UtcNow,
+                IsActive = true,
+                IsValidForUse = true
+            };
+        }
+
+        private static CreateTicketTiersRequest CreateTicketTiersRequest()
+        {
+            return new CreateTicketTiersRequest
+            {
+                EventId = Guid.NewGuid(),
+                Tiers = new List<TicketTierRequest>
+                {
+                    new TicketTierRequest
+                    {
+                        Name = "VIP",
+                        Description = "VIP access with premium benefits",
+                        Price = 150.00m,
+                        Quantity = 50
+                    },
+                    new TicketTierRequest
+                    {
+                        Name = "Regular",
+                        Description = "Standard event access",
+                        Price = 75.00m,
+                        Quantity = 200
+                    }
+                }
+            };
+        }
+
+        private static TicketTierResponse CreateTicketTierResponse(string name)
+        {
+            return new TicketTierResponse
             {
                 Id = Guid.NewGuid(),
-                EventId = eventId,
-                Name = createRequest.Name,
-                Description = createRequest.Description,
-                Price = createRequest.Price,
-                Currency = createRequest.Currency,
-                MaxQuantity = createRequest.MaxQuantity,
+                EventId = Guid.NewGuid(),
+                Name = name,
+                Description = $"{name} tier description",
+                Price = name == "VIP" ? 150.00m : 75.00m,
+                Currency = "USD",
+                MaxQuantity = name == "VIP" ? 50 : 200,
                 SoldQuantity = 0,
                 IsAvailable = true,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
-
-            var getTiers = new List<TicketTierResponse> { createdTier };
-
-            _mockTicketTierService.Setup(s => s.CreateTicketTierAsync(eventId, createRequest, userId))
-                .ReturnsAsync(createdTier);
-
-            _mockTicketTierService.Setup(s => s.GetEventTicketTiersAsync(eventId))
-                .ReturnsAsync(getTiers);
-
-            // Act - Create tier
-            var createResult = await _controller.CreateEventTicketTier(eventId, createRequest);
-
-            // Assert - Create
-            var createdResult = Assert.IsType<CreatedAtActionResult>(createResult);
-            Assert.NotNull(createdResult.Value);
-
-            // Act - Get tiers
-            var getResult = await _controller.GetEventTickets(eventId);
-
-            // Assert - Get
-            var okResult = Assert.IsType<OkObjectResult>(getResult);
-            var tiers = Assert.IsAssignableFrom<IEnumerable<TicketTierResponse>>(okResult.Value);
-            var tiersList = tiers.ToList();
-            
-            Assert.Single(tiersList);
-            Assert.Equal(createdTier.Name, tiersList[0].Name);
-            Assert.Equal(createdTier.Price, tiersList[0].Price);
         }
-
-        #endregion
-
-        #region Helper Methods
-
-        private void SetupInvalidUserContext()
-        {
-            var claims = new List<Claim>();
-            var identity = new ClaimsIdentity(claims, "TestAuth");
-            var principal = new ClaimsPrincipal(identity);
-
-            _controller.ControllerContext = new ControllerContext
-            {
-                HttpContext = new DefaultHttpContext
-                {
-                    User = principal
-                }
-            };
-        }
-
-        #endregion
     }
 }

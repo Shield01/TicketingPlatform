@@ -35,7 +35,9 @@ namespace Modules.TicketService.Services
 
             // Register repositories and services
             services.AddScoped<ITicketTierRepository, TicketTierRepository>();
+            services.AddScoped<ITicketRepository, TicketRepository>();
             services.AddScoped<ITicketTierService, TicketTierService>();
+            services.AddScoped<ITicketIssueService, TicketIssueService>();
 
             return services;
         }

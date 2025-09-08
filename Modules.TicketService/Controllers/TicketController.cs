@@ -21,11 +21,13 @@ namespace Modules.TicketService.Controllers
     {
         private readonly ILogger<TicketController> _logger;
         private readonly ITicketTierService _ticketTierService;
+        private readonly ITicketIssueService _ticketIssueService;
 
-        public TicketController(ILogger<TicketController> logger, ITicketTierService ticketTierService)
+        public TicketController(ILogger<TicketController> logger, ITicketTierService ticketTierService, ITicketIssueService ticketIssueService)
         {
             _logger = logger;
             _ticketTierService = ticketTierService;
+            _ticketIssueService = ticketIssueService;
         }
 
         /// <summary>
@@ -110,36 +112,118 @@ namespace Modules.TicketService.Controllers
         [Authorize(Policy = "OrganiserOrAdmin")]
         [SwaggerOperation(
             Summary = "Create ticket tiers for an event",
-            Description = "Creates multiple ticket tiers (VIP, Regular, Early Bird) for a specific event.",
+            Description = "Creates multiple ticket tiers (VIP, Regular, Early Bird) for a specific event. Can handle partial success where some tiers are created successfully while others fail due to validation or duplicate names.",
             OperationId = "CreateTicketTiers",
             Tags = new[] { "Tickets" }
         )]
-        [SwaggerResponse(201, "Ticket tiers created successfully", typeof(List<TicketTierResponse>))]
-        [SwaggerResponse(400, "Invalid ticket data")]
+        [SwaggerResponse(201, "All ticket tiers created successfully", typeof(List<TicketTierResponse>))]
+        [SwaggerResponse(200, "Some ticket tiers created successfully (partial success)")]
+        [SwaggerResponse(400, "Invalid ticket data or all tier creations failed")]
         [SwaggerResponse(401, "User not authenticated")]
         [SwaggerResponse(403, "User not authorized to create tickets")]
+        [SwaggerResponse(500, "Unexpected server error")]
         public async Task<IActionResult> CreateTicketTiers([FromBody] CreateTicketTiersRequest request)
         {
-            _logger.LogInformation("Ticket tiers creation attempt for event {EventId}", request.EventId);
+            _logger.LogInformation("Ticket tiers creation attempt for event {EventId} with {TierCount} tiers", 
+                request.EventId, request.Tiers.Count);
             
-            // TODO: Implement actual ticket tier creation logic
-            var response = request.Tiers.Select(tier => new TicketTierResponse
+            try
             {
-                Id = Guid.NewGuid(),
-                EventId = request.EventId,
-                Name = tier.Name,
-                Description = tier.Description,
-                Price = tier.Price,
-                Currency = "USD",
-                MaxQuantity = tier.Quantity,
-                SoldQuantity = 0,
-                IsAvailable = true,
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            }).ToList();
+                // Get the current user ID from JWT claims
+                var userId = HttpContext.GetUserId();
+                if (!userId.HasValue)
+                {
+                    _logger.LogWarning("User ID not found in claims for ticket tier creation");
+                    return Unauthorized("User not authenticated.");
+                }
 
-            return CreatedAtAction(nameof(GetEventTickets), new { eventId = request.EventId }, response);
+                var createdTiers = new List<TicketTierResponse>();
+                var errors = new List<string>();
+
+                // Create each tier individually
+                foreach (var tierRequest in request.Tiers)
+                {
+                    try
+                    {
+                        // Convert TicketTierRequest to CreateTicketTierRequest
+                        var createTierRequest = new CreateTicketTierRequest
+                        {
+                            Name = tierRequest.Name,
+                            Description = tierRequest.Description,
+                            Price = tierRequest.Price,
+                            Currency = "USD", // Default currency, could be made configurable
+                            MaxQuantity = tierRequest.Quantity,
+                            IsAvailable = true
+                        };
+
+                        var createdTier = await _ticketTierService.CreateTicketTierAsync(
+                            request.EventId, createTierRequest, userId.Value);
+                        
+                        createdTiers.Add(createdTier);
+                        
+                        _logger.LogInformation("Created ticket tier {TierName} with ID {TierId} for event {EventId}", 
+                            createdTier.Name, createdTier.Id, request.EventId);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        _logger.LogWarning("Invalid data for tier {TierName}: {ErrorMessage}", tierRequest.Name, ex.Message);
+                        errors.Add($"Tier '{tierRequest.Name}': {ex.Message}");
+                    }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("already exists"))
+                    {
+                        _logger.LogWarning("Duplicate tier name {TierName} for event {EventId}: {ErrorMessage}", 
+                            tierRequest.Name, request.EventId, ex.Message);
+                        errors.Add($"Tier '{tierRequest.Name}': {ex.Message}");
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        _logger.LogWarning("Unauthorized tier creation attempt for {TierName}: {ErrorMessage}", 
+                            tierRequest.Name, ex.Message);
+                        errors.Add($"Tier '{tierRequest.Name}': Unauthorized to create tier for this event");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error creating tier {TierName} for event {EventId}", 
+                            tierRequest.Name, request.EventId);
+                        errors.Add($"Tier '{tierRequest.Name}': Failed to create tier");
+                    }
+                }
+
+                // If we have some successful creations and some errors, return partial success
+                if (createdTiers.Any() && errors.Any())
+                {
+                    _logger.LogWarning("Partial success: Created {SuccessCount} tiers, failed {FailureCount} tiers for event {EventId}", 
+                        createdTiers.Count, errors.Count, request.EventId);
+                    
+                    return Ok(new
+                    {
+                        message = $"Partially created {createdTiers.Count} out of {request.Tiers.Count} ticket tiers",
+                        createdTiers = createdTiers,
+                        errors = errors
+                    });
+                }
+
+                // If all failed
+                if (!createdTiers.Any() && errors.Any())
+                {
+                    _logger.LogWarning("All tier creations failed for event {EventId}", request.EventId);
+                    return BadRequest(new { 
+                        error = "Failed to create any ticket tiers", 
+                        details = errors 
+                    });
+                }
+
+                // If all succeeded
+                _logger.LogInformation("Successfully created {TierCount} ticket tiers for event {EventId}", 
+                    createdTiers.Count, request.EventId);
+                
+                return CreatedAtAction(nameof(GetEventTickets), new { eventId = request.EventId }, createdTiers);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error creating ticket tiers for event {EventId}", request.EventId);
+                return StatusCode(500, new { error = "An unexpected error occurred while creating ticket tiers." });
+            }
         }
 
         /// <summary>
@@ -208,20 +292,243 @@ namespace Modules.TicketService.Controllers
         {
             _logger.LogInformation("Ticket verification attempt for ticket {TicketCode}", request.TicketCode);
             
-            // TODO: Implement actual ticket verification logic
-            var response = new TicketVerificationResponse
+            try
             {
-                IsValid = true,
-                TicketId = Guid.NewGuid(),
-                EventId = Guid.NewGuid(),
-                EventName = "Sample Event",
-                TicketTier = "VIP",
-                AttendeeName = "John Doe",
-                VerifiedAt = DateTime.UtcNow,
-                Message = "Ticket verified successfully"
-            };
+                var response = await _ticketIssueService.VerifyTicketAsync(request);
+                
+                if (response.IsValid)
+                {
+                    return Ok(response);
+                }
+                else
+                {
+                    return BadRequest(response);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error verifying ticket {TicketCode}", request.TicketCode);
+                return StatusCode(500, new { error = "An error occurred while verifying the ticket." });
+            }
+        }
 
-            return Ok(response);
+        /// <summary>
+        /// Issues tickets after payment confirmation.
+        /// </summary>
+        /// <param name="request">The ticket issuance request.</param>
+        /// <returns>The issued tickets information.</returns>
+        /// <response code="201">Tickets issued successfully.</response>
+        /// <response code="400">Invalid ticket issuance data.</response>
+        /// <response code="401">User not authenticated.</response>
+        /// <response code="403">User not authorized to issue tickets.</response>
+        /// <response code="409">Insufficient ticket capacity or invalid payment.</response>
+        [HttpPost("issue")]
+        [Authorize(Policy = "AuthenticatedUser")]
+        [SwaggerOperation(
+            Summary = "Issue tickets after payment confirmation",
+            Description = "Issues one or more tickets for a user after payment has been confirmed. This endpoint should typically be called by the payment webhook. If PaymentId is not provided, a GUID will be auto-generated for testing purposes.",
+            OperationId = "IssueTickets",
+            Tags = new[] { "Tickets" }
+        )]
+        [SwaggerResponse(201, "Tickets issued successfully", typeof(IssueTicketResponse))]
+        [SwaggerResponse(400, "Invalid ticket issuance data")]
+        [SwaggerResponse(401, "User not authenticated")]
+        [SwaggerResponse(403, "User not authorized to issue tickets")]
+        [SwaggerResponse(409, "Insufficient ticket capacity or invalid payment")]
+        public async Task<IActionResult> IssueTickets([FromBody] IssueTicketRequest request)
+        {
+            _logger.LogInformation("Ticket issuance attempt for user {UserId}, event {EventId}, payment {PaymentId}", 
+                request.UserId, request.EventId, request.PaymentId);
+
+            try
+            {
+                var response = await _ticketIssueService.IssueTicketsAsync(request);
+                
+                _logger.LogInformation("Successfully issued {Count} tickets for user {UserId}", 
+                    response.TicketsIssued, request.UserId);
+                
+                return CreatedAtAction(nameof(GetUserTickets), new { }, response);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning("Invalid ticket issuance request: {ErrorMessage}", ex.Message);
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning("Ticket issuance failed: {ErrorMessage}", ex.Message);
+                return Conflict(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error issuing tickets for user {UserId}", request.UserId);
+                return StatusCode(500, new { error = "An error occurred while issuing tickets." });
+            }
+        }
+
+        /// <summary>
+        /// Gets all tickets for the authenticated user.
+        /// </summary>
+        /// <param name="page">The page number for pagination (default: 1).</param>
+        /// <param name="pageSize">The number of items per page (default: 10, max: 100).</param>
+        /// <param name="status">Optional status filter (UNUSED, USED, CANCELLED).</param>
+        /// <returns>User's tickets with pagination information.</returns>
+        /// <response code="200">User tickets retrieved successfully.</response>
+        /// <response code="401">User not authenticated.</response>
+        [HttpGet("user")]
+        [Authorize(Policy = "AuthenticatedUser")]
+        [SwaggerOperation(
+            Summary = "Get user's tickets",
+            Description = "Retrieves all tickets owned by the authenticated user with pagination and optional status filtering.",
+            OperationId = "GetUserTickets",
+            Tags = new[] { "Tickets" }
+        )]
+        [SwaggerResponse(200, "User tickets retrieved successfully", typeof(UserTicketsResponse))]
+        [SwaggerResponse(401, "User not authenticated")]
+        public async Task<IActionResult> GetUserTickets(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string? status = null)
+        {
+            // Get the current user ID from JWT claims
+            var userId = HttpContext.GetUserId();
+            if (!userId.HasValue)
+            {
+                _logger.LogWarning("User ID not found in claims for ticket retrieval");
+                return Unauthorized("User not authenticated.");
+            }
+
+            _logger.LogInformation("Getting tickets for user {UserId}, page {Page}, pageSize {PageSize}, status {Status}", 
+                userId.Value, page, pageSize, status);
+
+            try
+            {
+                var response = await _ticketIssueService.GetUserTicketsAsync(userId.Value, page, pageSize, status);
+                
+                _logger.LogInformation("Retrieved {Count} tickets for user {UserId}", 
+                    response.Tickets.Count(), userId.Value);
+                
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving tickets for user {UserId}", userId.Value);
+                return StatusCode(500, new { error = "An error occurred while retrieving tickets." });
+            }
+        }
+
+        /// <summary>
+        /// Gets a specific ticket by ID for the authenticated user.
+        /// </summary>
+        /// <param name="ticketId">The unique identifier of the ticket.</param>
+        /// <returns>Ticket details if found and owned by the user.</returns>
+        /// <response code="200">Ticket retrieved successfully.</response>
+        /// <response code="404">Ticket not found or not owned by user.</response>
+        /// <response code="401">User not authenticated.</response>
+        [HttpGet("{ticketId}")]
+        [Authorize(Policy = "AuthenticatedUser")]
+        [SwaggerOperation(
+            Summary = "Get ticket by ID",
+            Description = "Retrieves a specific ticket by its ID. Users can only access their own tickets.",
+            OperationId = "GetTicketById",
+            Tags = new[] { "Tickets" }
+        )]
+        [SwaggerResponse(200, "Ticket retrieved successfully", typeof(TicketResponse))]
+        [SwaggerResponse(404, "Ticket not found or not owned by user")]
+        [SwaggerResponse(401, "User not authenticated")]
+        public async Task<IActionResult> GetTicketById(Guid ticketId)
+        {
+            // Get the current user ID from JWT claims
+            var userId = HttpContext.GetUserId();
+            if (!userId.HasValue)
+            {
+                _logger.LogWarning("User ID not found in claims for ticket retrieval");
+                return Unauthorized("User not authenticated.");
+            }
+
+            _logger.LogInformation("Getting ticket {TicketId} for user {UserId}", ticketId, userId.Value);
+
+            try
+            {
+                var ticket = await _ticketIssueService.GetTicketByIdAsync(ticketId, userId.Value);
+                
+                if (ticket == null)
+                {
+                    _logger.LogWarning("Ticket {TicketId} not found or not owned by user {UserId}", ticketId, userId.Value);
+                    return NotFound(new { error = "Ticket not found or you don't have access to this ticket." });
+                }
+
+                return Ok(ticket);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving ticket {TicketId} for user {UserId}", ticketId, userId.Value);
+                return StatusCode(500, new { error = "An error occurred while retrieving the ticket." });
+            }
+        }
+
+        /// <summary>
+        /// Cancels a ticket if it hasn't been used.
+        /// </summary>
+        /// <param name="ticketId">The unique identifier of the ticket to cancel.</param>
+        /// <returns>Cancellation confirmation.</returns>
+        /// <response code="200">Ticket cancelled successfully.</response>
+        /// <response code="400">Ticket cannot be cancelled (already used or invalid state).</response>
+        /// <response code="404">Ticket not found or not owned by user.</response>
+        /// <response code="401">User not authenticated.</response>
+        [HttpPost("{ticketId}/cancel")]
+        [Authorize(Policy = "AuthenticatedUser")]
+        [SwaggerOperation(
+            Summary = "Cancel a ticket",
+            Description = "Cancels a ticket if it hasn't been used yet. Users can only cancel their own tickets.",
+            OperationId = "CancelTicket",
+            Tags = new[] { "Tickets" }
+        )]
+        [SwaggerResponse(200, "Ticket cancelled successfully")]
+        [SwaggerResponse(400, "Ticket cannot be cancelled")]
+        [SwaggerResponse(404, "Ticket not found or not owned by user")]
+        [SwaggerResponse(401, "User not authenticated")]
+        public async Task<IActionResult> CancelTicket(Guid ticketId)
+        {
+            // Get the current user ID from JWT claims
+            var userId = HttpContext.GetUserId();
+            if (!userId.HasValue)
+            {
+                _logger.LogWarning("User ID not found in claims for ticket cancellation");
+                return Unauthorized("User not authenticated.");
+            }
+
+            _logger.LogInformation("Cancelling ticket {TicketId} for user {UserId}", ticketId, userId.Value);
+
+            try
+            {
+                var success = await _ticketIssueService.CancelTicketAsync(ticketId, userId.Value);
+                
+                if (success)
+                {
+                    _logger.LogInformation("Ticket {TicketId} cancelled successfully for user {UserId}", ticketId, userId.Value);
+                    return Ok(new { message = "Ticket cancelled successfully." });
+                }
+                else
+                {
+                    return BadRequest(new { error = "Failed to cancel ticket." });
+                }
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogWarning("Unauthorized ticket cancellation attempt: {ErrorMessage}", ex.Message);
+                return NotFound(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning("Invalid ticket cancellation request: {ErrorMessage}", ex.Message);
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cancelling ticket {TicketId} for user {UserId}", ticketId, userId.Value);
+                return StatusCode(500, new { error = "An error occurred while cancelling the ticket." });
+            }
         }
     }
 } 

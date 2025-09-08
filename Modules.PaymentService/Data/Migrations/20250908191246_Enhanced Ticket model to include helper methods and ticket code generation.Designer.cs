@@ -2,124 +2,41 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Modules.TicketService.Data;
+using Modules.PaymentService.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace Modules.TicketService.Data.Migrations
+namespace Modules.PaymentService.Data.Migrations
 {
-    [DbContext(typeof(TicketServiceDbContext))]
-    partial class TicketServiceDbContextModelSnapshot : ModelSnapshot
+    [DbContext(typeof(PaymentServiceDbContext))]
+    [Migration("20250908191246_Enhanced Ticket model to include helper methods and ticket code generation")]
+    partial class EnhancedTicketmodeltoincludehelpermethodsandticketcodegeneration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasDefaultSchema("tickets")
+                .HasDefaultSchema("payments")
                 .HasAnnotation("ProductVersion", "9.0.5")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Modules.TicketService.Models.Ticket", b =>
+            modelBuilder.Entity("Modules.PaymentService.Models.Payment", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
-                        .HasDefaultValue("USD");
-
-                    b.Property<Guid>("EventId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
-
-                    b.Property<bool>("IsUsed")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
-                    b.Property<Guid?>("PaymentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Price")
+                    b.Property<decimal>("Amount")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<string>("QRCodeData")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasDefaultValue("UNUSED");
-
-                    b.Property<string>("TicketCode")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid>("TicketTierId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<DateTime?>("UsedAt")
+                    b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("EventId");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("IsUsed");
-
-                    b.HasIndex("PaymentId");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("TicketCode")
-                        .IsUnique()
-                        .HasDatabaseName("IX_app_tickets_ticket_code_unique");
-
-                    b.HasIndex("TicketTierId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("app_tickets", "tickets");
-                });
-
-            modelBuilder.Entity("Modules.TicketService.Models.TicketTier", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -140,37 +57,121 @@ namespace Modules.TicketService.Data.Migrations
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Gateway")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("GatewayMetadata")
+                        .HasColumnType("jsonb");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(true);
 
-                    b.Property<bool>("IsAvailable")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
-                    b.Property<int>("MaxQuantity")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Name")
+                    b.Property<string>("PaymentReference")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(18,2)");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Pending");
 
-                    b.Property<DateTime?>("SaleEndDate")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("TransactionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
-                    b.Property<DateTime?>("SaleStartDate")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
 
-                    b.Property<int>("SoldQuantity")
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompletedAt");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("Gateway");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("PaymentReference")
+                        .IsUnique()
+                        .HasDatabaseName("IX_app_payments_reference_unique");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("app_payments", "payments");
+                });
+
+            modelBuilder.Entity("Modules.PaymentService.Models.PaymentItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasDefaultValue("USD");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ItemName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ItemType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Ticket");
+
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
-                        .HasDefaultValue(0);
+                        .HasDefaultValue(1);
+
+                    b.Property<decimal>("TotalPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -181,35 +182,31 @@ namespace Modules.TicketService.Data.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("EventId");
-
                     b.HasIndex("IsActive");
 
-                    b.HasIndex("IsAvailable");
+                    b.HasIndex("ItemId");
 
-                    b.HasIndex("Price");
+                    b.HasIndex("ItemType");
 
-                    b.HasIndex("EventId", "Name")
-                        .IsUnique()
-                        .HasDatabaseName("IX_app_ticket_tiers_event_name_unique");
+                    b.HasIndex("PaymentId");
 
-                    b.ToTable("app_ticket_tiers", "tickets");
+                    b.ToTable("app_payment_items", "payments");
                 });
 
-            modelBuilder.Entity("Modules.TicketService.Models.Ticket", b =>
+            modelBuilder.Entity("Modules.PaymentService.Models.PaymentItem", b =>
                 {
-                    b.HasOne("Modules.TicketService.Models.TicketTier", "TicketTier")
-                        .WithMany("Tickets")
-                        .HasForeignKey("TicketTierId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                    b.HasOne("Modules.PaymentService.Models.Payment", "Payment")
+                        .WithMany("PaymentItems")
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("TicketTier");
+                    b.Navigation("Payment");
                 });
 
-            modelBuilder.Entity("Modules.TicketService.Models.TicketTier", b =>
+            modelBuilder.Entity("Modules.PaymentService.Models.Payment", b =>
                 {
-                    b.Navigation("Tickets");
+                    b.Navigation("PaymentItems");
                 });
 #pragma warning restore 612, 618
         }
