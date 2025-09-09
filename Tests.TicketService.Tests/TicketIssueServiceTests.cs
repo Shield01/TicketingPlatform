@@ -15,14 +15,16 @@ namespace Tests.TicketService.Tests
     public class TicketIssueServiceTests
     {
         private readonly Mock<ITicketRepository> _mockTicketRepository;
+        private readonly Mock<IQRCodeService> _mockQRCodeService;
         private readonly Mock<ILogger<TicketIssueService>> _mockLogger;
         private readonly TicketIssueService _service;
 
         public TicketIssueServiceTests()
         {
             _mockTicketRepository = new Mock<ITicketRepository>();
+            _mockQRCodeService = new Mock<IQRCodeService>();
             _mockLogger = new Mock<ILogger<TicketIssueService>>();
-            _service = new TicketIssueService(_mockTicketRepository.Object, _mockLogger.Object);
+            _service = new TicketIssueService(_mockTicketRepository.Object, _mockQRCodeService.Object, _mockLogger.Object);
         }
 
         [Fact]
@@ -45,6 +47,8 @@ namespace Tests.TicketService.Tests
                 .ReturnsAsync(issuedTickets);
             _mockTicketRepository.Setup(r => r.UpdateTicketTierSoldQuantityAsync(request.TicketTierId, request.Quantity))
                 .ReturnsAsync(true);
+            _mockQRCodeService.Setup(q => q.GenerateJWTLikeQRData(It.IsAny<Ticket>()))
+                .Returns("test.qr.data");
 
             // Act
             var result = await _service.IssueTicketsAsync(request);
@@ -128,6 +132,8 @@ namespace Tests.TicketService.Tests
                 .ReturnsAsync(issuedTickets);
             _mockTicketRepository.Setup(r => r.UpdateTicketTierSoldQuantityAsync(request.TicketTierId, request.Quantity))
                 .ReturnsAsync(true);
+            _mockQRCodeService.Setup(q => q.GenerateJWTLikeQRData(It.IsAny<Ticket>()))
+                .Returns("test.qr.data");
 
             // Act
             var result = await _service.IssueTicketsAsync(request);
@@ -425,5 +431,207 @@ namespace Tests.TicketService.Tests
                 UpdatedAt = DateTime.UtcNow
             };
         }
+
+        #region QR Code Validation Tests
+
+        [Fact]
+        public async Task ValidateQRCodeAsync_WithValidQRCode_ShouldReturnSuccessResponse()
+        {
+            // Arrange
+            var ticketId = Guid.NewGuid();
+            var ticketCode = "TKT-20241201-TEST1234";
+            var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVU5VU0VEIiwiaXNzdWVkQXQiOiIyMDI0LTEyLTAxVDEwOjAwOjAwWiIsImV4cCI6IjIwMjUtMTItMDFUMTA6MDA6MDBaIn0.signature";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+            var ticket = CreateTestTicket();
+            ticket.Id = ticketId;
+            ticket.TicketCode = ticketCode;
+
+            var extractedData = new Dictionary<string, string>
+            {
+                { "ticketId", ticketId.ToString() },
+                { "ticketCode", ticketCode },
+                { "eventId", ticket.EventId.ToString() },
+                { "userId", ticket.UserId.ToString() },
+                { "ticketTierId", ticket.TicketTierId.ToString() },
+                { "status", ticket.Status }
+            };
+
+            _mockQRCodeService.Setup(q => q.ValidateAndExtractQRData(qrCodeData))
+                .Returns(extractedData);
+            _mockTicketRepository.Setup(r => r.GetTicketByIdAsync(ticketId))
+                .ReturnsAsync(ticket);
+            _mockTicketRepository.Setup(r => r.MarkTicketAsUsedAsync(ticketId))
+                .ReturnsAsync(true);
+
+            // Act
+            var result = await _service.ValidateQRCodeAsync(request);
+
+            // Assert
+            Assert.True(result.IsValid);
+            Assert.Equal(ticketId, result.TicketId);
+            Assert.Equal(ticket.EventId, result.EventId);
+            Assert.Equal("QR code validated successfully and ticket marked as used.", result.Message);
+            
+            _mockQRCodeService.Verify(q => q.ValidateAndExtractQRData(qrCodeData), Times.Once);
+            _mockTicketRepository.Verify(r => r.GetTicketByIdAsync(ticketId), Times.Once);
+            _mockTicketRepository.Verify(r => r.MarkTicketAsUsedAsync(ticketId), Times.Once);
+        }
+
+        [Fact]
+        public async Task ValidateQRCodeAsync_WithInvalidQRCode_ShouldReturnInvalidResponse()
+        {
+            // Arrange
+            var qrCodeData = "invalid.qr.data";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+
+            _mockQRCodeService.Setup(q => q.ValidateAndExtractQRData(qrCodeData))
+                .Returns((Dictionary<string, string>?)null);
+
+            // Act
+            var result = await _service.ValidateQRCodeAsync(request);
+
+            // Assert
+            Assert.False(result.IsValid);
+            Assert.Equal("Invalid QR code data. The QR code may be corrupted, expired, or tampered with.", result.Message);
+            
+            _mockQRCodeService.Verify(q => q.ValidateAndExtractQRData(qrCodeData), Times.Once);
+            _mockTicketRepository.Verify(r => r.GetTicketByIdAsync(It.IsAny<Guid>()), Times.Never);
+            _mockTicketRepository.Verify(r => r.MarkTicketAsUsedAsync(It.IsAny<Guid>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ValidateQRCodeAsync_WithMissingTicketId_ShouldReturnInvalidResponse()
+        {
+            // Arrange
+            var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRDb2RlIjoiVEtULTIwMjQxMjAxLVRFU1QxMjM0In0.signature";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+
+            var extractedData = new Dictionary<string, string>
+            {
+                { "ticketCode", "TKT-20241201-TEST1234" }
+                // Missing ticketId
+            };
+
+            _mockQRCodeService.Setup(q => q.ValidateAndExtractQRData(qrCodeData))
+                .Returns(extractedData);
+
+            // Act
+            var result = await _service.ValidateQRCodeAsync(request);
+
+            // Assert
+            Assert.False(result.IsValid);
+            Assert.Equal("QR code does not contain valid ticket information.", result.Message);
+            
+            _mockQRCodeService.Verify(q => q.ValidateAndExtractQRData(qrCodeData), Times.Once);
+            _mockTicketRepository.Verify(r => r.GetTicketByIdAsync(It.IsAny<Guid>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ValidateQRCodeAsync_WithNonExistentTicket_ShouldReturnInvalidResponse()
+        {
+            // Arrange
+            var ticketId = Guid.NewGuid();
+            var ticketCode = "TKT-20241201-TEST1234";
+            var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVU5VU0VEIiwiaXNzdWVkQXQiOiIyMDI0LTEyLTAxVDEwOjAwOjAwWiIsImV4cCI6IjIwMjUtMTItMDFUMTA6MDA6MDBaIn0.signature";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+
+            var extractedData = new Dictionary<string, string>
+            {
+                { "ticketId", ticketId.ToString() },
+                { "ticketCode", ticketCode }
+            };
+
+            _mockQRCodeService.Setup(q => q.ValidateAndExtractQRData(qrCodeData))
+                .Returns(extractedData);
+            _mockTicketRepository.Setup(r => r.GetTicketByIdAsync(ticketId))
+                .ReturnsAsync((Ticket?)null);
+
+            // Act
+            var result = await _service.ValidateQRCodeAsync(request);
+
+            // Assert
+            Assert.False(result.IsValid);
+            Assert.Equal("Ticket not found. This ticket may have been deleted or the QR code is invalid.", result.Message);
+            
+            _mockQRCodeService.Verify(q => q.ValidateAndExtractQRData(qrCodeData), Times.Once);
+            _mockTicketRepository.Verify(r => r.GetTicketByIdAsync(ticketId), Times.Once);
+            _mockTicketRepository.Verify(r => r.MarkTicketAsUsedAsync(It.IsAny<Guid>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ValidateQRCodeAsync_WithUsedTicket_ShouldReturnInvalidResponse()
+        {
+            // Arrange
+            var ticketId = Guid.NewGuid();
+            var ticketCode = "TKT-20241201-TEST1234";
+            var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVVNFRCIsImlzc3VlZEF0IjoiMjAyNC0xMi0wMVQxMDowMDowMFoiLCJleHAiOiIyMDI1LTEyLTAxVDEwOjAwOjAwWiJ9.signature";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+            var ticket = CreateTestTicket();
+            ticket.Id = ticketId;
+            ticket.TicketCode = ticketCode;
+            ticket.IsUsed = true;
+            ticket.Status = Ticket.TicketStatus.Used;
+
+            var extractedData = new Dictionary<string, string>
+            {
+                { "ticketId", ticketId.ToString() },
+                { "ticketCode", ticketCode }
+            };
+
+            _mockQRCodeService.Setup(q => q.ValidateAndExtractQRData(qrCodeData))
+                .Returns(extractedData);
+            _mockTicketRepository.Setup(r => r.GetTicketByIdAsync(ticketId))
+                .ReturnsAsync(ticket);
+
+            // Act
+            var result = await _service.ValidateQRCodeAsync(request);
+
+            // Assert
+            Assert.False(result.IsValid);
+            Assert.Equal("Ticket cannot be used because it is already used.", result.Message);
+            Assert.Equal(ticketId, result.TicketId);
+            Assert.Equal(ticket.EventId, result.EventId);
+            
+            _mockQRCodeService.Verify(q => q.ValidateAndExtractQRData(qrCodeData), Times.Once);
+            _mockTicketRepository.Verify(r => r.GetTicketByIdAsync(ticketId), Times.Once);
+            _mockTicketRepository.Verify(r => r.MarkTicketAsUsedAsync(It.IsAny<Guid>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ValidateQRCodeAsync_WithTicketCodeMismatch_ShouldReturnInvalidResponse()
+        {
+            // Arrange
+            var ticketId = Guid.NewGuid();
+            var ticketCode = "TKT-20241201-TEST1234";
+            var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVU5VU0VEIiwiaXNzdWVkQXQiOiIyMDI0LTEyLTAxVDEwOjAwOjAwWiIsImV4cCI6IjIwMjUtMTItMDFUMTA6MDA6MDBaIn0.signature";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+            var ticket = CreateTestTicket();
+            ticket.Id = ticketId;
+            ticket.TicketCode = "DIFFERENT-CODE"; // Different from QR code
+
+            var extractedData = new Dictionary<string, string>
+            {
+                { "ticketId", ticketId.ToString() },
+                { "ticketCode", ticketCode }
+            };
+
+            _mockQRCodeService.Setup(q => q.ValidateAndExtractQRData(qrCodeData))
+                .Returns(extractedData);
+            _mockTicketRepository.Setup(r => r.GetTicketByIdAsync(ticketId))
+                .ReturnsAsync(ticket);
+
+            // Act
+            var result = await _service.ValidateQRCodeAsync(request);
+
+            // Assert
+            Assert.False(result.IsValid);
+            Assert.Equal("QR code data does not match ticket information. This may be a fraudulent QR code.", result.Message);
+            
+            _mockQRCodeService.Verify(q => q.ValidateAndExtractQRData(qrCodeData), Times.Once);
+            _mockTicketRepository.Verify(r => r.GetTicketByIdAsync(ticketId), Times.Once);
+            _mockTicketRepository.Verify(r => r.MarkTicketAsUsedAsync(It.IsAny<Guid>()), Times.Never);
+        }
+
+        #endregion
     }
 }

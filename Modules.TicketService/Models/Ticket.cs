@@ -123,7 +123,8 @@ namespace Modules.TicketService.Models
         }
 
         /// <summary>
-        /// Generates QR code data for this ticket.
+        /// Generates QR code data for this ticket using the legacy format.
+        /// This method is kept for backward compatibility.
         /// </summary>
         /// <returns>QR code data string.</returns>
         public string GenerateQRCodeData()
@@ -134,6 +135,16 @@ namespace Modules.TicketService.Models
             // Add a hash for verification
             var hash = GenerateVerificationHash(qrData);
             return $"{qrData}|HASH:{hash}";
+        }
+
+        /// <summary>
+        /// Sets the QR code data for this ticket.
+        /// </summary>
+        /// <param name="qrCodeData">The QR code data to set.</param>
+        public void SetQRCodeData(string qrCodeData)
+        {
+            QRCodeData = qrCodeData;
+            UpdatedAt = DateTime.UtcNow;
         }
 
         /// <summary>

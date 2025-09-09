@@ -19,6 +19,7 @@ namespace Tests.TicketService.Tests
         private readonly Mock<ILogger<TicketController>> _mockLogger;
         private readonly Mock<ITicketTierService> _mockTicketTierService;
         private readonly Mock<ITicketIssueService> _mockTicketIssueService;
+        private readonly Mock<IQRCodeService> _mockQRCodeService;
         private readonly TicketController _controller;
 
         public TicketControllerTests()
@@ -26,7 +27,8 @@ namespace Tests.TicketService.Tests
             _mockLogger = new Mock<ILogger<TicketController>>();
             _mockTicketTierService = new Mock<ITicketTierService>();
             _mockTicketIssueService = new Mock<ITicketIssueService>();
-            _controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object);
+            _mockQRCodeService = new Mock<IQRCodeService>();
+            _controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object, _mockQRCodeService.Object);
 
             // Setup HttpContext with user claims
             var userId = Guid.NewGuid();
@@ -600,5 +602,259 @@ namespace Tests.TicketService.Tests
                 UpdatedAt = DateTime.UtcNow
             };
         }
+
+        #region QR Code Tests
+
+        [Fact]
+        public async Task GetTicketQRCode_WithValidTicket_ReturnsQRCodeResponse()
+        {
+            // Arrange
+            var ticketId = Guid.NewGuid();
+            var userId = Guid.NewGuid();
+            var ticketResponse = CreateTicketResponse(ticketId, userId);
+
+            _mockTicketIssueService
+                .Setup(x => x.GetTicketByIdAsync(ticketId, userId))
+                .ReturnsAsync(ticketResponse);
+
+            // Act
+            var result = await _controller.GetTicketQRCode(ticketId);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var qrResponse = Assert.IsType<QRCodeResponse>(okResult.Value);
+            
+            Assert.Equal(ticketId, qrResponse.TicketId);
+            Assert.Equal(ticketResponse.TicketCode, qrResponse.TicketCode);
+            Assert.Equal(ticketResponse.QRCodeData, qrResponse.QRCodeData);
+            Assert.Equal(ticketResponse.QRCodeImage, qrResponse.QRCodeImage);
+            Assert.Equal("image/png", qrResponse.ImageMimeType);
+            Assert.Equal(512, qrResponse.ImageSize);
+            Assert.Equal(ticketResponse.IsValidForUse, qrResponse.IsValidForUse);
+            Assert.Equal(ticketResponse.Status, qrResponse.Status);
+        }
+
+        [Fact]
+        public async Task GetTicketQRCode_WithNonExistentTicket_ReturnsNotFound()
+        {
+            // Arrange
+            var ticketId = Guid.NewGuid();
+            var userId = Guid.NewGuid();
+
+            _mockTicketIssueService
+                .Setup(x => x.GetTicketByIdAsync(ticketId, userId))
+                .ReturnsAsync((TicketResponse?)null);
+
+            // Act
+            var result = await _controller.GetTicketQRCode(ticketId);
+
+            // Assert
+            var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+            var errorResponse = notFoundResult.Value;
+            Assert.NotNull(errorResponse);
+        }
+
+        [Fact]
+        public async Task GetTicketQRCode_WithUnauthorizedUser_ReturnsUnauthorized()
+        {
+            // Arrange
+            var ticketId = Guid.NewGuid();
+            var controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object, _mockQRCodeService.Object);
+            
+            // No HttpContext setup - should return unauthorized
+
+            // Act
+            var result = await controller.GetTicketQRCode(ticketId);
+
+            // Assert
+            var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+            Assert.Equal("User not authenticated.", unauthorizedResult.Value);
+        }
+
+        [Fact]
+        public async Task GetTicketQRCode_WithServiceException_ReturnsInternalServerError()
+        {
+            // Arrange
+            var ticketId = Guid.NewGuid();
+            var userId = Guid.NewGuid();
+
+            _mockTicketIssueService
+                .Setup(x => x.GetTicketByIdAsync(ticketId, userId))
+                .ThrowsAsync(new Exception("Service error"));
+
+            // Act
+            var result = await _controller.GetTicketQRCode(ticketId);
+
+            // Assert
+            var statusCodeResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(500, statusCodeResult.StatusCode);
+        }
+
+        private static TicketResponse CreateTicketResponse(Guid ticketId, Guid userId)
+        {
+            return new TicketResponse
+            {
+                Id = ticketId,
+                EventId = Guid.NewGuid(),
+                EventName = "Test Event",
+                UserId = userId,
+                TicketTierId = Guid.NewGuid(),
+                TierName = "VIP",
+                TierDescription = "VIP tier",
+                Price = 150.00m,
+                Currency = "USD",
+                TicketCode = "TKT-20241201-TEST1234",
+                QRCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVU5VU0VEIiwiaXNzdWVkQXQiOiIyMDI0LTEyLTAxVDEwOjAwOjAwWiIsImV4cCI6IjIwMjUtMTItMDFUMTA6MDA6MDBaIn0.signature",
+                QRCodeImage = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+                IsUsed = false,
+                UsedAt = null,
+                Status = "UNUSED",
+                PaymentId = Guid.NewGuid(),
+                IssuedAt = DateTime.UtcNow,
+                IsActive = true,
+                IsValidForUse = true
+            };
+        }
+
+        #endregion
+
+        #region QR Code Validation Tests
+
+        [Fact]
+        public async Task ValidateQRCode_WithValidQRCode_ReturnsSuccessResponse()
+        {
+            // Arrange
+            var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVU5VU0VEIiwiaXNzdWVkQXQiOiIyMDI0LTEyLTAxVDEwOjAwOjAwWiIsImV4cCI6IjIwMjUtMTItMDFUMTA6MDA6MDBaIn0.signature";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+            var expectedResponse = new TicketVerificationResponse
+            {
+                IsValid = true,
+                TicketId = Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Test Event",
+                TicketTier = "VIP",
+                AttendeeName = "John Doe",
+                VerifiedAt = DateTime.UtcNow,
+                Message = "QR code validated successfully and ticket marked as used."
+            };
+
+            _mockTicketIssueService
+                .Setup(x => x.ValidateQRCodeAsync(request))
+                .ReturnsAsync(expectedResponse);
+
+            // Act
+            var result = await _controller.ValidateQRCode(request);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var response = Assert.IsType<TicketVerificationResponse>(okResult.Value);
+            
+            Assert.True(response.IsValid);
+            Assert.Equal(expectedResponse.TicketId, response.TicketId);
+            Assert.Equal(expectedResponse.EventId, response.EventId);
+            Assert.Equal(expectedResponse.EventName, response.EventName);
+            Assert.Equal(expectedResponse.TicketTier, response.TicketTier);
+            Assert.Equal(expectedResponse.AttendeeName, response.AttendeeName);
+            Assert.Equal("QR code validated successfully and ticket marked as used.", response.Message);
+        }
+
+        [Fact]
+        public async Task ValidateQRCode_WithInvalidQRCode_ReturnsBadRequest()
+        {
+            // Arrange
+            var qrCodeData = "invalid.qr.data";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+            var expectedResponse = new TicketVerificationResponse
+            {
+                IsValid = false,
+                Message = "Invalid QR code data. The QR code may be corrupted, expired, or tampered with."
+            };
+
+            _mockTicketIssueService
+                .Setup(x => x.ValidateQRCodeAsync(request))
+                .ReturnsAsync(expectedResponse);
+
+            // Act
+            var result = await _controller.ValidateQRCode(request);
+
+            // Assert
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            var response = Assert.IsType<TicketVerificationResponse>(badRequestResult.Value);
+            
+            Assert.False(response.IsValid);
+            Assert.Equal("Invalid QR code data. The QR code may be corrupted, expired, or tampered with.", response.Message);
+        }
+
+        [Fact]
+        public async Task ValidateQRCode_WithUsedTicket_ReturnsBadRequest()
+        {
+            // Arrange
+            var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVVNFRCIsImlzc3VlZEF0IjoiMjAyNC0xMi0wMVQxMDowMDowMFoiLCJleHAiOiIyMDI1LTEyLTAxVDEwOjAwOjAwWiJ9.signature";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+            var expectedResponse = new TicketVerificationResponse
+            {
+                IsValid = false,
+                TicketId = Guid.NewGuid(),
+                EventId = Guid.NewGuid(),
+                EventName = "Test Event",
+                TicketTier = "VIP",
+                AttendeeName = "John Doe",
+                VerifiedAt = DateTime.UtcNow,
+                Message = "Ticket cannot be used because it is already used."
+            };
+
+            _mockTicketIssueService
+                .Setup(x => x.ValidateQRCodeAsync(request))
+                .ReturnsAsync(expectedResponse);
+
+            // Act
+            var result = await _controller.ValidateQRCode(request);
+
+            // Assert
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            var response = Assert.IsType<TicketVerificationResponse>(badRequestResult.Value);
+            
+            Assert.False(response.IsValid);
+            Assert.Equal("Ticket cannot be used because it is already used.", response.Message);
+        }
+
+        [Fact]
+        public async Task ValidateQRCode_WithUnauthorizedUser_ReturnsUnauthorized()
+        {
+            // Arrange
+            var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVU5VU0VEIiwiaXNzdWVkQXQiOiIyMDI0LTEyLTAxVDEwOjAwOjAwWiIsImV4cCI6IjIwMjUtMTItMDFUMTA6MDA6MDBaIn0.signature";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+            var controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object, _mockQRCodeService.Object);
+            
+            // No HttpContext setup - should return unauthorized
+
+            // Act
+            var result = await controller.ValidateQRCode(request);
+
+            // Assert
+            var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+            Assert.Equal("User not authenticated.", unauthorizedResult.Value);
+        }
+
+        [Fact]
+        public async Task ValidateQRCode_WithServiceException_ReturnsInternalServerError()
+        {
+            // Arrange
+            var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVU5VU0VEIiwiaXNzdWVkQXQiOiIyMDI0LTEyLTAxVDEwOjAwOjAwWiIsImV4cCI6IjIwMjUtMTItMDFUMTA6MDA6MDBaIn0.signature";
+            var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
+
+            _mockTicketIssueService
+                .Setup(x => x.ValidateQRCodeAsync(request))
+                .ThrowsAsync(new Exception("Service error"));
+
+            // Act
+            var result = await _controller.ValidateQRCode(request);
+
+            // Assert
+            var statusCodeResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(500, statusCodeResult.StatusCode);
+        }
+
+        #endregion
     }
 }

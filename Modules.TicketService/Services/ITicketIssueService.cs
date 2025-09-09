@@ -57,5 +57,12 @@ namespace Modules.TicketService.Services
         /// <param name="request">The ticket issuance request.</param>
         /// <returns>True if valid, false otherwise.</returns>
         Task<bool> ValidateTicketIssuanceRequestAsync(IssueTicketRequest request);
+
+        /// <summary>
+        /// Validates a QR code and marks the associated ticket as used.
+        /// </summary>
+        /// <param name="request">The QR code validation request.</param>
+        /// <returns>The ticket verification response with comprehensive ticket details.</returns>
+        Task<TicketVerificationResponse> ValidateQRCodeAsync(QRCodeValidationRequest request);
     }
 }
