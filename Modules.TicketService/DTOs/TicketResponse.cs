@@ -61,6 +61,11 @@ namespace Modules.TicketService.DTOs
         public string? QRCodeData { get; set; }
 
         /// <summary>
+        /// The QR code image as a base64 encoded string.
+        /// </summary>
+        public string? QRCodeImage { get; set; }
+
+        /// <summary>
         /// Whether the ticket has been used.
         /// </summary>
         public bool IsUsed { get; set; }

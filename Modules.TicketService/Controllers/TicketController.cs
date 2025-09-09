@@ -22,12 +22,14 @@ namespace Modules.TicketService.Controllers
         private readonly ILogger<TicketController> _logger;
         private readonly ITicketTierService _ticketTierService;
         private readonly ITicketIssueService _ticketIssueService;
+        private readonly IQRCodeService _qrCodeService;
 
-        public TicketController(ILogger<TicketController> logger, ITicketTierService ticketTierService, ITicketIssueService ticketIssueService)
+        public TicketController(ILogger<TicketController> logger, ITicketTierService ticketTierService, ITicketIssueService ticketIssueService, IQRCodeService qrCodeService)
         {
             _logger = logger;
             _ticketTierService = ticketTierService;
             _ticketIssueService = ticketIssueService;
+            _qrCodeService = qrCodeService;
         }
 
         /// <summary>
@@ -528,6 +530,118 @@ namespace Modules.TicketService.Controllers
             {
                 _logger.LogError(ex, "Error cancelling ticket {TicketId} for user {UserId}", ticketId, userId.Value);
                 return StatusCode(500, new { error = "An error occurred while cancelling the ticket." });
+            }
+        }
+
+        /// <summary>
+        /// Gets the QR code for a specific ticket.
+        /// </summary>
+        /// <param name="ticketId">The unique identifier of the ticket.</param>
+        /// <returns>QR code information including image and data.</returns>
+        /// <response code="200">QR code retrieved successfully.</response>
+        /// <response code="404">Ticket not found or not owned by user.</response>
+        /// <response code="401">User not authenticated.</response>
+        [HttpGet("{ticketId}/qr")]
+        [Authorize(Policy = "AuthenticatedUser")]
+        [SwaggerOperation(
+            Summary = "Get QR code for a ticket",
+            Description = "Retrieves the QR code information for a specific ticket including the QR code image and data. Users can only access QR codes for their own tickets.",
+            OperationId = "GetTicketQRCode",
+            Tags = new[] { "Tickets" }
+        )]
+        [SwaggerResponse(200, "QR code retrieved successfully", typeof(QRCodeResponse))]
+        [SwaggerResponse(404, "Ticket not found or not owned by user")]
+        [SwaggerResponse(401, "User not authenticated")]
+        public async Task<IActionResult> GetTicketQRCode(Guid ticketId)
+        {
+            // Get the current user ID from JWT claims
+            var userId = HttpContext.GetUserId();
+            if (!userId.HasValue)
+            {
+                _logger.LogWarning("User ID not found in claims for QR code retrieval");
+                return Unauthorized("User not authenticated.");
+            }
+
+            _logger.LogInformation("Getting QR code for ticket {TicketId} for user {UserId}", ticketId, userId.Value);
+
+            try
+            {
+                var ticket = await _ticketIssueService.GetTicketByIdAsync(ticketId, userId.Value);
+                
+                if (ticket == null)
+                {
+                    _logger.LogWarning("Ticket {TicketId} not found or not owned by user {UserId}", ticketId, userId.Value);
+                    return NotFound(new { error = "Ticket not found or you don't have access to this ticket." });
+                }
+
+                // Generate QR code response
+                var qrResponse = new QRCodeResponse
+                {
+                    TicketId = ticket.Id,
+                    TicketCode = ticket.TicketCode,
+                    QRCodeData = ticket.QRCodeData ?? string.Empty,
+                    QRCodeImage = ticket.QRCodeImage ?? string.Empty,
+                    ImageMimeType = "image/png",
+                    ImageSize = 512,
+                    GeneratedAt = DateTime.UtcNow,
+                    IsValidForUse = ticket.IsValidForUse,
+                    Status = ticket.Status
+                };
+
+                _logger.LogInformation("Successfully retrieved QR code for ticket {TicketId}", ticketId);
+                return Ok(qrResponse);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving QR code for ticket {TicketId} for user {UserId}", ticketId, userId.Value);
+                return StatusCode(500, new { error = "An error occurred while retrieving the QR code." });
+            }
+        }
+
+        /// <summary>
+        /// Validates a QR code for event entry.
+        /// </summary>
+        /// <param name="request">The QR code validation request containing the QR code data.</param>
+        /// <returns>QR code validation result with comprehensive ticket details.</returns>
+        /// <response code="200">QR code validated successfully and ticket marked as used.</response>
+        /// <response code="400">Invalid QR code data or ticket cannot be used.</response>
+        /// <response code="401">User not authenticated.</response>
+        /// <response code="403">User not authorized to validate QR codes.</response>
+        [HttpPost("validate-qr")]
+        [Authorize(Policy = "StaffOrHigher")]
+        [SwaggerOperation(
+            Summary = "Validate a QR code for entry",
+            Description = "Validates a QR code and marks the associated ticket as used for event entry. This endpoint is designed for event organizers to scan QR codes at the entrance. No need to extract ticket codes - just send the raw QR code data.",
+            OperationId = "ValidateQRCode",
+            Tags = new[] { "Tickets" }
+        )]
+        [SwaggerResponse(200, "QR code validated successfully and ticket marked as used", typeof(TicketVerificationResponse))]
+        [SwaggerResponse(400, "Invalid QR code data or ticket cannot be used", typeof(TicketVerificationResponse))]
+        [SwaggerResponse(401, "User not authenticated")]
+        [SwaggerResponse(403, "User not authorized to validate QR codes")]
+        public async Task<IActionResult> ValidateQRCode([FromBody] QRCodeValidationRequest request)
+        {
+            _logger.LogInformation("QR code validation attempt");
+
+            try
+            {
+                var response = await _ticketIssueService.ValidateQRCodeAsync(request);
+                
+                if (response.IsValid)
+                {
+                    _logger.LogInformation("QR code validated successfully for ticket {TicketId}", response.TicketId);
+                    return Ok(response);
+                }
+                else
+                {
+                    _logger.LogWarning("QR code validation failed: {Message}", response.Message);
+                    return BadRequest(response);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating QR code");
+                return StatusCode(500, new { error = "An error occurred while validating the QR code." });
             }
         }
     }

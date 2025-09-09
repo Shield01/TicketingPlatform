@@ -38,6 +38,7 @@ namespace Modules.TicketService.Services
             services.AddScoped<ITicketRepository, TicketRepository>();
             services.AddScoped<ITicketTierService, TicketTierService>();
             services.AddScoped<ITicketIssueService, TicketIssueService>();
+            services.AddScoped<IQRCodeService, QRCodeService>();
 
             return services;
         }

@@ -12,16 +12,19 @@ namespace Modules.TicketService.Services
     public class TicketIssueService : ITicketIssueService
     {
         private readonly ITicketRepository _ticketRepository;
+        private readonly IQRCodeService _qrCodeService;
         private readonly ILogger<TicketIssueService> _logger;
 
         /// <summary>
         /// Initializes a new instance of the TicketIssueService.
         /// </summary>
         /// <param name="ticketRepository">The ticket repository.</param>
+        /// <param name="qrCodeService">The QR code service.</param>
         /// <param name="logger">The logger instance.</param>
-        public TicketIssueService(ITicketRepository ticketRepository, ILogger<TicketIssueService> logger)
+        public TicketIssueService(ITicketRepository ticketRepository, IQRCodeService qrCodeService, ILogger<TicketIssueService> logger)
         {
             _ticketRepository = ticketRepository;
+            _qrCodeService = qrCodeService;
             _logger = logger;
         }
 
@@ -386,8 +389,8 @@ namespace Modules.TicketService.Services
                 UpdatedAt = DateTime.UtcNow
             };
 
-            // Generate QR code data
-            ticket.QRCodeData = ticket.GenerateQRCodeData();
+            // Generate QR code data using the new JWT-like format
+            ticket.QRCodeData = _qrCodeService.GenerateJWTLikeQRData(ticket);
 
             return ticket;
         }
@@ -398,29 +401,190 @@ namespace Modules.TicketService.Services
         /// <param name="ticket">The ticket entity.</param>
         /// <param name="ticketTier">The ticket tier (optional).</param>
         /// <returns>A ticket response DTO.</returns>
-        private static TicketResponse ConvertToTicketResponse(Ticket ticket, TicketTier? ticketTier)
+        private TicketResponse ConvertToTicketResponse(Ticket ticket, TicketTier? ticketTier)
         {
-            return new TicketResponse
+            try
             {
-                Id = ticket.Id,
-                EventId = ticket.EventId,
-                EventName = "Event Name", // TODO: Get from EventService
-                UserId = ticket.UserId,
-                TicketTierId = ticket.TicketTierId,
-                TierName = ticketTier?.Name ?? "Unknown",
-                TierDescription = ticketTier?.Description,
-                Price = ticket.Price,
-                Currency = ticket.Currency,
-                TicketCode = ticket.TicketCode,
-                QRCodeData = ticket.QRCodeData,
-                IsUsed = ticket.IsUsed,
-                UsedAt = ticket.UsedAt,
-                Status = ticket.Status,
-                PaymentId = ticket.PaymentId,
-                IssuedAt = ticket.CreatedAt,
-                IsActive = ticket.IsActive,
-                IsValidForUse = ticket.IsValidForUse()
-            };
+                // Generate QR code image if QR data exists
+                string? qrCodeImage = null;
+                if (!string.IsNullOrEmpty(ticket.QRCodeData))
+                {
+                    qrCodeImage = _qrCodeService.GenerateQRCodeImage(ticket.QRCodeData);
+                }
+
+                return new TicketResponse
+                {
+                    Id = ticket.Id,
+                    EventId = ticket.EventId,
+                    EventName = "Event Name", // TODO: Get from EventService
+                    UserId = ticket.UserId,
+                    TicketTierId = ticket.TicketTierId,
+                    TierName = ticketTier?.Name ?? "Unknown",
+                    TierDescription = ticketTier?.Description,
+                    Price = ticket.Price,
+                    Currency = ticket.Currency,
+                    TicketCode = ticket.TicketCode,
+                    QRCodeData = ticket.QRCodeData,
+                    QRCodeImage = qrCodeImage,
+                    IsUsed = ticket.IsUsed,
+                    UsedAt = ticket.UsedAt,
+                    Status = ticket.Status,
+                    PaymentId = ticket.PaymentId,
+                    IssuedAt = ticket.CreatedAt,
+                    IsActive = ticket.IsActive,
+                    IsValidForUse = ticket.IsValidForUse()
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating QR code image for ticket {TicketId}", ticket.Id);
+                // Return response without QR code image if generation fails
+                return new TicketResponse
+                {
+                    Id = ticket.Id,
+                    EventId = ticket.EventId,
+                    EventName = "Event Name", // TODO: Get from EventService
+                    UserId = ticket.UserId,
+                    TicketTierId = ticket.TicketTierId,
+                    TierName = ticketTier?.Name ?? "Unknown",
+                    TierDescription = ticketTier?.Description,
+                    Price = ticket.Price,
+                    Currency = ticket.Currency,
+                    TicketCode = ticket.TicketCode,
+                    QRCodeData = ticket.QRCodeData,
+                    QRCodeImage = null, // QR code generation failed
+                    IsUsed = ticket.IsUsed,
+                    UsedAt = ticket.UsedAt,
+                    Status = ticket.Status,
+                    PaymentId = ticket.PaymentId,
+                    IssuedAt = ticket.CreatedAt,
+                    IsActive = ticket.IsActive,
+                    IsValidForUse = ticket.IsValidForUse()
+                };
+            }
+        }
+
+        /// <summary>
+        /// Validates a QR code and marks the associated ticket as used.
+        /// </summary>
+        /// <param name="request">The QR code validation request.</param>
+        /// <returns>The ticket verification response with comprehensive ticket details.</returns>
+        public async Task<TicketVerificationResponse> ValidateQRCodeAsync(QRCodeValidationRequest request)
+        {
+            _logger.LogInformation("QR code validation attempt");
+
+            try
+            {
+                // Step 1: Validate QR code data structure and extract ticket information
+                var extractedData = _qrCodeService.ValidateAndExtractQRData(request.QRCodeData);
+                
+                if (extractedData == null)
+                {
+                    _logger.LogWarning("Invalid QR code data provided");
+                    return new TicketVerificationResponse
+                    {
+                        IsValid = false,
+                        Message = "Invalid QR code data. The QR code may be corrupted, expired, or tampered with."
+                    };
+                }
+
+                // Step 2: Extract ticket information from QR data
+                if (!extractedData.TryGetValue("ticketId", out var ticketIdString) || 
+                    !Guid.TryParse(ticketIdString, out var ticketId))
+                {
+                    _logger.LogWarning("QR code does not contain valid ticket ID");
+                    return new TicketVerificationResponse
+                    {
+                        IsValid = false,
+                        Message = "QR code does not contain valid ticket information."
+                    };
+                }
+
+                if (!extractedData.TryGetValue("ticketCode", out var ticketCode) || string.IsNullOrEmpty(ticketCode))
+                {
+                    _logger.LogWarning("QR code does not contain valid ticket code");
+                    return new TicketVerificationResponse
+                    {
+                        IsValid = false,
+                        Message = "QR code does not contain valid ticket code."
+                    };
+                }
+
+                // Step 3: Get the ticket from database
+                var ticket = await _ticketRepository.GetTicketByIdAsync(ticketId);
+                if (ticket == null)
+                {
+                    _logger.LogWarning("Ticket {TicketId} not found in database", ticketId);
+                    return new TicketVerificationResponse
+                    {
+                        IsValid = false,
+                        Message = "Ticket not found. This ticket may have been deleted or the QR code is invalid."
+                    };
+                }
+
+                // Step 4: Verify ticket code matches
+                if (ticket.TicketCode != ticketCode)
+                {
+                    _logger.LogWarning("Ticket code mismatch for ticket {TicketId}. Expected: {ExpectedCode}, Got: {ActualCode}", 
+                        ticketId, ticket.TicketCode, ticketCode);
+                    return new TicketVerificationResponse
+                    {
+                        IsValid = false,
+                        Message = "QR code data does not match ticket information. This may be a fraudulent QR code."
+                    };
+                }
+
+                // Step 5: Check if ticket is valid for use
+                if (!ticket.IsValidForUse())
+                {
+                    _logger.LogWarning("Ticket {TicketId} is not valid for use. Status: {Status}, Used: {IsUsed}, Active: {IsActive}", 
+                        ticketId, ticket.Status, ticket.IsUsed, ticket.IsActive);
+                    
+                    var reason = ticket.IsUsed ? "already used" : 
+                                ticket.Status == Ticket.TicketStatus.Cancelled ? "cancelled" :
+                                ticket.Status == Ticket.TicketStatus.Expired ? "expired" :
+                                !ticket.IsActive ? "inactive" : "invalid status";
+
+                    return new TicketVerificationResponse
+                    {
+                        IsValid = false,
+                        TicketId = ticket.Id,
+                        EventId = ticket.EventId,
+                        EventName = "Event Name", // TODO: Get from EventService
+                        TicketTier = ticket.TicketTier?.Name ?? "Unknown",
+                        AttendeeName = "User Name", // TODO: Get from UserService
+                        VerifiedAt = DateTime.UtcNow,
+                        Message = $"Ticket cannot be used because it is {reason}."
+                    };
+                }
+
+                // Step 6: Mark ticket as used
+                await _ticketRepository.MarkTicketAsUsedAsync(ticket.Id);
+
+                _logger.LogInformation("QR code validated successfully for ticket {TicketId}", ticketId);
+
+                // Step 7: Return comprehensive success response
+                return new TicketVerificationResponse
+                {
+                    IsValid = true,
+                    TicketId = ticket.Id,
+                    EventId = ticket.EventId,
+                    EventName = "Event Name", // TODO: Get from EventService
+                    TicketTier = ticket.TicketTier?.Name ?? "Unknown",
+                    AttendeeName = "User Name", // TODO: Get from UserService
+                    VerifiedAt = DateTime.UtcNow,
+                    Message = "QR code validated successfully and ticket marked as used."
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating QR code");
+                return new TicketVerificationResponse
+                {
+                    IsValid = false,
+                    Message = "An error occurred during QR code validation. Please try again or contact support."
+                };
+            }
         }
     }
 }
