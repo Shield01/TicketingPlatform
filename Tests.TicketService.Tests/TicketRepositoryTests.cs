@@ -77,7 +77,10 @@ namespace Tests.TicketService.Tests
         public async Task GetTicketByIdAsync_ShouldReturnTicket_WhenExists()
         {
             // Arrange
-            var ticket = CreateTestTicket();
+            var ticketTier = CreateTestTicketTier();
+            await _context.TicketTiers.AddAsync(ticketTier);
+            
+            var ticket = CreateTestTicket(ticketTierId: ticketTier.Id);
             await _context.Tickets.AddAsync(ticket);
             await _context.SaveChangesAsync();
 
@@ -104,7 +107,10 @@ namespace Tests.TicketService.Tests
         public async Task GetTicketByCodeAsync_ShouldReturnTicket_WhenExists()
         {
             // Arrange
-            var ticket = CreateTestTicket();
+            var ticketTier = CreateTestTicketTier();
+            await _context.TicketTiers.AddAsync(ticketTier);
+            
+            var ticket = CreateTestTicket(ticketTierId: ticketTier.Id);
             await _context.Tickets.AddAsync(ticket);
             await _context.SaveChangesAsync();
 
@@ -134,14 +140,18 @@ namespace Tests.TicketService.Tests
             var userId = Guid.NewGuid();
             var otherUserId = Guid.NewGuid();
 
+            var ticketTier1 = CreateTestTicketTier();
+            var ticketTier2 = CreateTestTicketTier();
+            await _context.TicketTiers.AddRangeAsync(ticketTier1, ticketTier2);
+
             var userTickets = new List<Ticket>
             {
-                CreateTestTicket(userId: userId),
-                CreateTestTicket(userId: userId),
-                CreateTestTicket(userId: userId)
+                CreateTestTicket(userId: userId, ticketTierId: ticketTier1.Id),
+                CreateTestTicket(userId: userId, ticketTierId: ticketTier1.Id),
+                CreateTestTicket(userId: userId, ticketTierId: ticketTier2.Id)
             };
 
-            var otherUserTicket = CreateTestTicket(userId: otherUserId);
+            var otherUserTicket = CreateTestTicket(userId: otherUserId, ticketTierId: ticketTier1.Id);
 
             await _context.Tickets.AddRangeAsync(userTickets);
             await _context.Tickets.AddAsync(otherUserTicket);
@@ -161,11 +171,14 @@ namespace Tests.TicketService.Tests
         {
             // Arrange
             var userId = Guid.NewGuid();
+            var ticketTier = CreateTestTicketTier();
+            await _context.TicketTiers.AddAsync(ticketTier);
+
             var tickets = new List<Ticket>
             {
-                CreateTestTicket(userId: userId, status: Ticket.TicketStatus.Unused),
-                CreateTestTicket(userId: userId, status: Ticket.TicketStatus.Used),
-                CreateTestTicket(userId: userId, status: Ticket.TicketStatus.Unused)
+                CreateTestTicket(userId: userId, ticketTierId: ticketTier.Id, status: Ticket.TicketStatus.Unused),
+                CreateTestTicket(userId: userId, ticketTierId: ticketTier.Id, status: Ticket.TicketStatus.Used),
+                CreateTestTicket(userId: userId, ticketTierId: ticketTier.Id, status: Ticket.TicketStatus.Unused)
             };
 
             await _context.Tickets.AddRangeAsync(tickets);
@@ -206,7 +219,10 @@ namespace Tests.TicketService.Tests
         public async Task MarkTicketAsUsedAsync_ShouldMarkAsUsed_WhenValid()
         {
             // Arrange
-            var ticket = CreateTestTicket(status: Ticket.TicketStatus.Unused);
+            var ticketTier = CreateTestTicketTier();
+            await _context.TicketTiers.AddAsync(ticketTier);
+            
+            var ticket = CreateTestTicket(ticketTierId: ticketTier.Id, status: Ticket.TicketStatus.Unused);
             await _context.Tickets.AddAsync(ticket);
             await _context.SaveChangesAsync();
 
@@ -241,7 +257,10 @@ namespace Tests.TicketService.Tests
         public async Task CancelTicketAsync_ShouldCancelTicket_WhenValid()
         {
             // Arrange
-            var ticket = CreateTestTicket();
+            var ticketTier = CreateTestTicketTier();
+            await _context.TicketTiers.AddAsync(ticketTier);
+            
+            var ticket = CreateTestTicket(ticketTierId: ticketTier.Id);
             await _context.Tickets.AddAsync(ticket);
             await _context.SaveChangesAsync();
 

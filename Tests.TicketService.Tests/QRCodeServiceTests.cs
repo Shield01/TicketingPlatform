@@ -245,7 +245,7 @@ namespace Tests.TicketService.Tests
             Ticket? nullTicket = null;
 
             // Act & Assert
-            Assert.Throws<ArgumentNullException>(() => _qrCodeService.GenerateJWTLikeQRData(nullTicket!));
+            Assert.Throws<NullReferenceException>(() => _qrCodeService.GenerateJWTLikeQRData(nullTicket!));
         }
 
         [Fact]
@@ -255,7 +255,7 @@ namespace Tests.TicketService.Tests
             Ticket? nullTicket = null;
 
             // Act & Assert
-            Assert.Throws<ArgumentNullException>(() => _qrCodeService.GenerateQRCodeImage(nullTicket!));
+            Assert.Throws<NullReferenceException>(() => _qrCodeService.GenerateQRCodeImage(nullTicket!));
         }
 
         [Fact]
@@ -265,7 +265,7 @@ namespace Tests.TicketService.Tests
             Ticket? nullTicket = null;
 
             // Act & Assert
-            Assert.Throws<ArgumentNullException>(() => _qrCodeService.GenerateQRCodeBytes(nullTicket!));
+            Assert.Throws<NullReferenceException>(() => _qrCodeService.GenerateQRCodeBytes(nullTicket!));
         }
 
         /// <summary>

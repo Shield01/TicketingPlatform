@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
+using Modules.TicketService.Configuration;
 using Modules.TicketService.Data;
 using Modules.TicketService.Repositories;
 using Modules.TicketService.Services;
@@ -25,12 +26,23 @@ namespace Modules.TicketService.Services
             {
                 // Register DbContext with PostgreSQL
                 services.AddTicketsPersistence(configuration);
+
+                var emailSection = configuration.GetSection("Email");
+
+                // Register email configuration
+                services.Configure<EmailConfiguration>(emailSection);
             }
             else
             {
                 // Fallback to in-memory database (for testing)
                 services.AddDbContext<TicketServiceDbContext>(options =>
                     options.UseInMemoryDatabase("TicketServiceDb"));
+                
+                // Register default email configuration for testing
+                services.Configure<EmailConfiguration>(config =>
+                {
+                    config.IsEnabled = false; // Disable email in test environment
+                });
             }
 
             // Register repositories and services
@@ -39,6 +51,10 @@ namespace Modules.TicketService.Services
             services.AddScoped<ITicketTierService, TicketTierService>();
             services.AddScoped<ITicketIssueService, TicketIssueService>();
             services.AddScoped<IQRCodeService, QRCodeService>();
+            
+            // Register email services
+            services.AddScoped<IEmailTemplateService, EmailTemplateService>();
+            services.AddScoped<IEmailService, EmailService>();
 
             return services;
         }

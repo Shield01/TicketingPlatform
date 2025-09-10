@@ -40,6 +40,7 @@ namespace Modules.EventService.Services
 
             // Register services
             services.AddScoped<IEventService, EventService>();
+            services.AddScoped<Shared.Kernel.Interfaces.IEventInfoService, EventInfoService>();
 
             return services;
         }
