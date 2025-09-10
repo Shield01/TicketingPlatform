@@ -39,6 +39,7 @@ namespace Modules.UserService.Services
             // Register Services
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IJwtService, JwtService>();
+            services.AddScoped<Shared.Kernel.Interfaces.IUserInfoService, UserInfoService>();
 
             return services;
         }

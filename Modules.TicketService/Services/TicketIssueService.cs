@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Modules.TicketService.DTOs;
 using Modules.TicketService.Models;
 using Modules.TicketService.Repositories;
+using Shared.Kernel.Interfaces;
 using System.ComponentModel.DataAnnotations;
 
 namespace Modules.TicketService.Services
@@ -13,6 +14,9 @@ namespace Modules.TicketService.Services
     {
         private readonly ITicketRepository _ticketRepository;
         private readonly IQRCodeService _qrCodeService;
+        private readonly IEmailService _emailService;
+        private readonly IUserInfoService _userInfoService;
+        private readonly IEventInfoService _eventInfoService;
         private readonly ILogger<TicketIssueService> _logger;
 
         /// <summary>
@@ -20,11 +24,17 @@ namespace Modules.TicketService.Services
         /// </summary>
         /// <param name="ticketRepository">The ticket repository.</param>
         /// <param name="qrCodeService">The QR code service.</param>
+        /// <param name="emailService">The email service.</param>
+        /// <param name="userInfoService">The user info service.</param>
+        /// <param name="eventInfoService">The event info service.</param>
         /// <param name="logger">The logger instance.</param>
-        public TicketIssueService(ITicketRepository ticketRepository, IQRCodeService qrCodeService, ILogger<TicketIssueService> logger)
+        public TicketIssueService(ITicketRepository ticketRepository, IQRCodeService qrCodeService, IEmailService emailService, IUserInfoService userInfoService, IEventInfoService eventInfoService, ILogger<TicketIssueService> logger)
         {
             _ticketRepository = ticketRepository;
             _qrCodeService = qrCodeService;
+            _emailService = emailService;
+            _userInfoService = userInfoService;
+            _eventInfoService = eventInfoService;
             _logger = logger;
         }
 
@@ -91,7 +101,18 @@ namespace Modules.TicketService.Services
                     request.Quantity, request.UserId, request.PaymentId);
 
                 // Convert to response
-                var ticketResponses = issuedTickets.Select(t => ConvertToTicketResponse(t, ticketTier)).ToList();
+                var ticketResponses = new List<TicketResponse>();
+                foreach (var ticket in issuedTickets)
+                {
+                    var response = await ConvertToTicketResponseAsync(ticket, ticketTier);
+                    ticketResponses.Add(response);
+                }
+
+                // Send email confirmation (fire and forget - don't block ticket issuance)
+                // Capture user and event info within the request scope before background task
+                var userInfo = await _userInfoService.GetUserInfoAsync(request.UserId);
+                var eventInfo = await _eventInfoService.GetEventInfoAsync(request.EventId);
+                _ = Task.Run(async () => await SendTicketConfirmationEmailAsync(ticketResponses, userInfo, eventInfo, ticketTier.Name));
 
                 return new IssueTicketResponse
                 {
@@ -138,7 +159,8 @@ namespace Modules.TicketService.Services
                 foreach (var ticket in tickets)
                 {
                     var ticketTier = ticket.TicketTier ?? await _ticketRepository.GetTicketTierAsync(ticket.TicketTierId);
-                    ticketResponses.Add(ConvertToTicketResponse(ticket, ticketTier));
+                    var response = await ConvertToTicketResponseAsync(ticket, ticketTier);
+                    ticketResponses.Add(response);
                 }
 
                 return new UserTicketsResponse
@@ -180,7 +202,7 @@ namespace Modules.TicketService.Services
                 }
 
                 var ticketTier = ticket.TicketTier ?? await _ticketRepository.GetTicketTierAsync(ticket.TicketTierId);
-                return ConvertToTicketResponse(ticket, ticketTier);
+                return await ConvertToTicketResponseAsync(ticket, ticketTier);
             }
             catch (Exception ex)
             {
@@ -213,6 +235,13 @@ namespace Modules.TicketService.Services
 
                 var isValidForUse = ticket.IsValidForUse();
                 
+                // Get event and user information
+                var eventInfo = await _eventInfoService.GetEventInfoAsync(ticket.EventId);
+                var userInfo = await _userInfoService.GetUserInfoAsync(ticket.UserId);
+                
+                var eventName = eventInfo?.Title ?? "Event Name";
+                var attendeeName = userInfo?.FullName ?? "User Name";
+
                 if (isValidForUse)
                 {
                     // Mark ticket as used
@@ -223,9 +252,9 @@ namespace Modules.TicketService.Services
                         IsValid = true,
                         TicketId = ticket.Id,
                         EventId = ticket.EventId,
-                        EventName = "Event Name", // TODO: Get from EventService
+                        EventName = eventName,
                         TicketTier = ticket.TicketTier?.Name ?? "Unknown",
-                        AttendeeName = "User Name", // TODO: Get from UserService
+                        AttendeeName = attendeeName,
                         VerifiedAt = DateTime.UtcNow,
                         Message = "Ticket verified successfully and marked as used."
                     };
@@ -237,9 +266,9 @@ namespace Modules.TicketService.Services
                         IsValid = false,
                         TicketId = ticket.Id,
                         EventId = ticket.EventId,
-                        EventName = "Event Name", // TODO: Get from EventService
+                        EventName = eventName,
                         TicketTier = ticket.TicketTier?.Name ?? "Unknown",
-                        AttendeeName = "User Name", // TODO: Get from UserService
+                        AttendeeName = attendeeName,
                         VerifiedAt = DateTime.UtcNow,
                         Message = $"Ticket is not valid for use. Status: {ticket.Status}, Used: {ticket.IsUsed}"
                     };
@@ -401,7 +430,7 @@ namespace Modules.TicketService.Services
         /// <param name="ticket">The ticket entity.</param>
         /// <param name="ticketTier">The ticket tier (optional).</param>
         /// <returns>A ticket response DTO.</returns>
-        private TicketResponse ConvertToTicketResponse(Ticket ticket, TicketTier? ticketTier)
+        private async Task<TicketResponse> ConvertToTicketResponseAsync(Ticket ticket, TicketTier? ticketTier)
         {
             try
             {
@@ -412,11 +441,15 @@ namespace Modules.TicketService.Services
                     qrCodeImage = _qrCodeService.GenerateQRCodeImage(ticket.QRCodeData);
                 }
 
+                // Get event name from EventInfoService
+                var eventInfo = await _eventInfoService.GetEventInfoAsync(ticket.EventId);
+                var eventName = eventInfo?.Title ?? "Event Name";
+
                 return new TicketResponse
                 {
                     Id = ticket.Id,
                     EventId = ticket.EventId,
-                    EventName = "Event Name", // TODO: Get from EventService
+                    EventName = eventName,
                     UserId = ticket.UserId,
                     TicketTierId = ticket.TicketTierId,
                     TierName = ticketTier?.Name ?? "Unknown",
@@ -438,12 +471,17 @@ namespace Modules.TicketService.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error generating QR code image for ticket {TicketId}", ticket.Id);
+                
+                // Get event name from EventInfoService (with fallback)
+                var eventInfo = await _eventInfoService.GetEventInfoAsync(ticket.EventId);
+                var eventName = eventInfo?.Title ?? "Event Name";
+                
                 // Return response without QR code image if generation fails
                 return new TicketResponse
                 {
                     Id = ticket.Id,
                     EventId = ticket.EventId,
-                    EventName = "Event Name", // TODO: Get from EventService
+                    EventName = eventName,
                     UserId = ticket.UserId,
                     TicketTierId = ticket.TicketTierId,
                     TierName = ticketTier?.Name ?? "Unknown",
@@ -461,6 +499,67 @@ namespace Modules.TicketService.Services
                     IsActive = ticket.IsActive,
                     IsValidForUse = ticket.IsValidForUse()
                 };
+            }
+        }
+
+        /// <summary>
+        /// Sends ticket confirmation email to the user.
+        /// </summary>
+        /// <param name="ticketResponses">The list of ticket responses.</param>
+        /// <param name="userInfo">The user information.</param>
+        /// <param name="eventInfo">The event information.</param>
+        /// <param name="eventName">The event name (fallback).</param>
+        private async Task SendTicketConfirmationEmailAsync(IEnumerable<TicketResponse> ticketResponses, Shared.Kernel.Interfaces.UserInfo? userInfo, Shared.Kernel.Interfaces.EventInfo? eventInfo, string eventName)
+        {
+            try
+            {
+                var tickets = ticketResponses.ToList();
+                if (!tickets.Any())
+                {
+                    _logger.LogWarning("No tickets provided for email confirmation");
+                    return;
+                }
+
+                // Check if user info is available
+                if (userInfo == null)
+                {
+                    _logger.LogWarning("User information not available, skipping email confirmation");
+                    return;
+                }
+
+                var userEmail = userInfo.Email;
+                var userName = userInfo.FullName;
+                var userId = userInfo.Id;
+                
+                // Use provided event info or fallback
+                var actualEventName = eventInfo?.Title ?? eventName ?? "Event";
+
+                _logger.LogInformation("Sending ticket confirmation email for {TicketCount} tickets to user {UserId} ({UserEmail}) for event {EventName}", 
+                    tickets.Count, userId, userEmail, actualEventName);
+
+                bool emailSent;
+                if (tickets.Count == 1)
+                {
+                    emailSent = await _emailService.SendTicketConfirmationEmailAsync(tickets.First(), userEmail, userName, actualEventName);
+                }
+                else
+                {
+                    emailSent = await _emailService.SendMultipleTicketConfirmationEmailsAsync(tickets, userEmail, userName, actualEventName);
+                }
+
+                if (emailSent)
+                {
+                    _logger.LogInformation("Successfully sent ticket confirmation email for {TicketCount} tickets to user {UserId} ({UserEmail})", tickets.Count, userId, userEmail);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send ticket confirmation email for {TicketCount} tickets to user {UserId} ({UserEmail})", tickets.Count, userId, userEmail);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending ticket confirmation email for user {UserId}", userInfo?.Id);
+                // Don't rethrow - email failure shouldn't affect ticket issuance
             }
         }
 
@@ -545,14 +644,21 @@ namespace Modules.TicketService.Services
                                 ticket.Status == Ticket.TicketStatus.Expired ? "expired" :
                                 !ticket.IsActive ? "inactive" : "invalid status";
 
+                    // Get event and user information for error response
+                    var errorEventInfo = await _eventInfoService.GetEventInfoAsync(ticket.EventId);
+                    var errorUserInfo = await _userInfoService.GetUserInfoAsync(ticket.UserId);
+                    
+                    var errorEventName = errorEventInfo?.Title ?? "Event Name";
+                    var errorAttendeeName = errorUserInfo?.FullName ?? "User Name";
+
                     return new TicketVerificationResponse
                     {
                         IsValid = false,
                         TicketId = ticket.Id,
                         EventId = ticket.EventId,
-                        EventName = "Event Name", // TODO: Get from EventService
+                        EventName = errorEventName,
                         TicketTier = ticket.TicketTier?.Name ?? "Unknown",
-                        AttendeeName = "User Name", // TODO: Get from UserService
+                        AttendeeName = errorAttendeeName,
                         VerifiedAt = DateTime.UtcNow,
                         Message = $"Ticket cannot be used because it is {reason}."
                     };
@@ -563,15 +669,22 @@ namespace Modules.TicketService.Services
 
                 _logger.LogInformation("QR code validated successfully for ticket {TicketId}", ticketId);
 
-                // Step 7: Return comprehensive success response
+                // Step 7: Get event and user information
+                var eventInfo = await _eventInfoService.GetEventInfoAsync(ticket.EventId);
+                var userInfo = await _userInfoService.GetUserInfoAsync(ticket.UserId);
+                
+                var eventName = eventInfo?.Title ?? "Event Name";
+                var attendeeName = userInfo?.FullName ?? "User Name";
+
+                // Step 8: Return comprehensive success response
                 return new TicketVerificationResponse
                 {
                     IsValid = true,
                     TicketId = ticket.Id,
                     EventId = ticket.EventId,
-                    EventName = "Event Name", // TODO: Get from EventService
+                    EventName = eventName,
                     TicketTier = ticket.TicketTier?.Name ?? "Unknown",
-                    AttendeeName = "User Name", // TODO: Get from UserService
+                    AttendeeName = attendeeName,
                     VerifiedAt = DateTime.UtcNow,
                     Message = "QR code validated successfully and ticket marked as used."
                 };

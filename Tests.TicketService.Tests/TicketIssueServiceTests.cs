@@ -16,6 +16,9 @@ namespace Tests.TicketService.Tests
     {
         private readonly Mock<ITicketRepository> _mockTicketRepository;
         private readonly Mock<IQRCodeService> _mockQRCodeService;
+        private readonly Mock<IEmailService> _mockEmailService;
+        private readonly Mock<Shared.Kernel.Interfaces.IUserInfoService> _mockUserInfoService;
+        private readonly Mock<Shared.Kernel.Interfaces.IEventInfoService> _mockEventInfoService;
         private readonly Mock<ILogger<TicketIssueService>> _mockLogger;
         private readonly TicketIssueService _service;
 
@@ -23,8 +26,11 @@ namespace Tests.TicketService.Tests
         {
             _mockTicketRepository = new Mock<ITicketRepository>();
             _mockQRCodeService = new Mock<IQRCodeService>();
+            _mockEmailService = new Mock<IEmailService>();
+            _mockUserInfoService = new Mock<Shared.Kernel.Interfaces.IUserInfoService>();
+            _mockEventInfoService = new Mock<Shared.Kernel.Interfaces.IEventInfoService>();
             _mockLogger = new Mock<ILogger<TicketIssueService>>();
-            _service = new TicketIssueService(_mockTicketRepository.Object, _mockQRCodeService.Object, _mockLogger.Object);
+            _service = new TicketIssueService(_mockTicketRepository.Object, _mockQRCodeService.Object, _mockEmailService.Object, _mockUserInfoService.Object, _mockEventInfoService.Object, _mockLogger.Object);
         }
 
         [Fact]
@@ -49,6 +55,10 @@ namespace Tests.TicketService.Tests
                 .ReturnsAsync(true);
             _mockQRCodeService.Setup(q => q.GenerateJWTLikeQRData(It.IsAny<Ticket>()))
                 .Returns("test.qr.data");
+            _mockUserInfoService.Setup(u => u.GetUserInfoAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new Shared.Kernel.Interfaces.UserInfo { Id = request.UserId, Email = "test@example.com", FirstName = "Test", LastName = "User" });
+            _mockEventInfoService.Setup(e => e.GetEventInfoAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new Shared.Kernel.Interfaces.EventInfo { Id = request.EventId, Title = "Test Event" });
 
             // Act
             var result = await _service.IssueTicketsAsync(request);
