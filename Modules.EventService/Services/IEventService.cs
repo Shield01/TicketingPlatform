@@ -124,5 +124,13 @@ namespace Modules.EventService.Services
         /// <param name="userId">The ID of the user unpublishing the event.</param>
         /// <returns>The updated event response if successful, null if not found or unauthorized.</returns>
         Task<EventResponse?> UnpublishEventAsync(Guid eventId, Guid userId);
+
+        /// <summary>
+        /// Gets all events created by the authenticated user (organizer) with filtering and pagination.
+        /// </summary>
+        /// <param name="organizerId">The ID of the organizer (current user).</param>
+        /// <param name="filter">The filter criteria for events including pagination, sorting, and search.</param>
+        /// <returns>A paginated response of events owned by the organizer.</returns>
+        Task<PaginatedEventsResponse> GetMyEventsAsync(Guid organizerId, EventFilterRequest filter);
     }
 } 

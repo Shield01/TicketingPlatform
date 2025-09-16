@@ -1205,5 +1205,127 @@ namespace Tests.EventService.Tests
         }
 
         #endregion
+
+        #region GetMyEventsAsync Tests
+
+        [Fact]
+        public async Task GetMyEventsAsync_ValidFilter_ReturnsPaginatedResponse()
+        {
+            // Arrange
+            var organizerId = Guid.NewGuid();
+            var filter = new EventFilterRequest
+            {
+                Page = 1,
+                PageSize = 10,
+                Status = "Draft,Published",
+                SearchKeyword = "test",
+                SortBy = "CreatedAt",
+                SortDirection = "desc"
+            };
+
+            var events = new List<Event>
+            {
+                new Event
+                {
+                    Id = Guid.NewGuid(),
+                    Title = "Test Event 1",
+                    Description = "Test Description 1",
+                    StartDate = DateTime.UtcNow.AddDays(1),
+                    EndDate = DateTime.UtcNow.AddDays(2),
+                    Location = "Test Location 1",
+                    Status = "Draft",
+                    OrganizerId = organizerId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    IsActive = true
+                },
+                new Event
+                {
+                    Id = Guid.NewGuid(),
+                    Title = "Test Event 2",
+                    Description = "Test Description 2",
+                    StartDate = DateTime.UtcNow.AddDays(3),
+                    EndDate = DateTime.UtcNow.AddDays(4),
+                    Location = "Test Location 2",
+                    Status = "Published",
+                    OrganizerId = organizerId,
+                    CreatedAt = DateTime.UtcNow.AddMinutes(-30),
+                    UpdatedAt = DateTime.UtcNow.AddMinutes(-30),
+                    IsActive = true
+                }
+            };
+
+            _mockEventRepository.Setup(r => r.GetFilteredEventsByOrganizerAsync(organizerId, filter))
+                .ReturnsAsync((events, 2));
+
+            // Act
+            var result = await _eventService.GetMyEventsAsync(organizerId, filter);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Equal(2, result.Events.Count);
+            Assert.Equal(2, result.TotalCount);
+            Assert.Equal(1, result.Page);
+            Assert.Equal(10, result.PageSize);
+            Assert.Equal(1, result.TotalPages);
+            Assert.False(result.HasNextPage);
+            Assert.False(result.HasPreviousPage);
+
+            // Verify events are returned in the correct order
+            Assert.Equal("Test Event 1", result.Events.First().Title);
+            Assert.Equal("Test Event 2", result.Events.Last().Title);
+
+            _mockEventRepository.Verify(r => r.GetFilteredEventsByOrganizerAsync(organizerId, filter), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetMyEventsAsync_NoEvents_ReturnsEmptyResponse()
+        {
+            // Arrange
+            var organizerId = Guid.NewGuid();
+            var filter = new EventFilterRequest
+            {
+                Page = 1,
+                PageSize = 10
+            };
+
+            _mockEventRepository.Setup(r => r.GetFilteredEventsByOrganizerAsync(organizerId, filter))
+                .ReturnsAsync((new List<Event>(), 0));
+
+            // Act
+            var result = await _eventService.GetMyEventsAsync(organizerId, filter);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.Empty(result.Events);
+            Assert.Equal(0, result.TotalCount);
+            Assert.Equal(1, result.Page);
+            Assert.Equal(10, result.PageSize);
+            Assert.Equal(0, result.TotalPages);
+            Assert.False(result.HasNextPage);
+            Assert.False(result.HasPreviousPage);
+
+            _mockEventRepository.Verify(r => r.GetFilteredEventsByOrganizerAsync(organizerId, filter), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetMyEventsAsync_InvalidFilter_ThrowsArgumentException()
+        {
+            // Arrange
+            var organizerId = Guid.NewGuid();
+            var filter = new EventFilterRequest
+            {
+                Page = 0, // Invalid page
+                PageSize = 10
+            };
+
+            // Act & Assert
+            var exception = await Assert.ThrowsAsync<ArgumentException>(() => _eventService.GetMyEventsAsync(organizerId, filter));
+            Assert.Contains("Page must be greater than 0", exception.Message);
+
+            _mockEventRepository.Verify(r => r.GetFilteredEventsByOrganizerAsync(It.IsAny<Guid>(), It.IsAny<EventFilterRequest>()), Times.Never);
+        }
+
+        #endregion
     }
 } 

@@ -37,6 +37,14 @@ namespace Modules.EventService.Repositories
         Task<IEnumerable<Event>> GetEventsByOrganizerAsync(Guid organizerId);
 
         /// <summary>
+        /// Gets filtered events for a specific organizer asynchronously with pagination.
+        /// </summary>
+        /// <param name="organizerId">The unique identifier of the organizer.</param>
+        /// <param name="filter">The filter criteria for events.</param>
+        /// <returns>A tuple containing the filtered events and total count.</returns>
+        Task<(IEnumerable<Event> Events, int TotalCount)> GetFilteredEventsByOrganizerAsync(Guid organizerId, EventFilterRequest filter);
+
+        /// <summary>
         /// Gets all public events asynchronously.
         /// </summary>
         /// <returns>A list of all public events.</returns>

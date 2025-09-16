@@ -119,6 +119,139 @@ namespace Modules.EventService.Repositories
         }
 
         /// <summary>
+        /// Gets filtered events for a specific organizer asynchronously with pagination.
+        /// </summary>
+        /// <param name="organizerId">The unique identifier of the organizer.</param>
+        /// <param name="filter">The filter criteria for events.</param>
+        /// <returns>A tuple containing the filtered events and total count.</returns>
+        public async Task<(IEnumerable<Event> Events, int TotalCount)> GetFilteredEventsByOrganizerAsync(Guid organizerId, EventFilterRequest filter)
+        {
+            try
+            {
+                _logger.LogDebug("Getting filtered events for organizer {OrganizerId} with filter: {@Filter}", organizerId, filter);
+                
+                // Build the base query - filter by organizer and active events
+                var baseQuery = _context.Events
+                    .Where(e => e.OrganizerId == organizerId && e.IsActive);
+
+                // Apply status filter if provided (can be comma-separated)
+                if (!string.IsNullOrWhiteSpace(filter.Status))
+                {
+                    var statuses = filter.Status.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(s => s.Trim())
+                        .Where(s => !string.IsNullOrEmpty(s))
+                        .ToList();
+                    
+                    if (statuses.Any())
+                    {
+                        baseQuery = baseQuery.Where(e => statuses.Contains(e.Status));
+                    }
+                }
+
+                // Apply category filter
+                if (!string.IsNullOrWhiteSpace(filter.Category))
+                {
+                    baseQuery = baseQuery.Where(e => e.Category == filter.Category);
+                }
+
+                // Apply event type filter (upcoming, past, all)
+                if (!string.IsNullOrWhiteSpace(filter.EventType))
+                {
+                    var now = DateTime.UtcNow;
+                    switch (filter.EventType.ToLower())
+                    {
+                        case "upcoming":
+                            baseQuery = baseQuery.Where(e => e.StartDate > now);
+                            break;
+                        case "past":
+                            baseQuery = baseQuery.Where(e => e.EndDate < now);
+                            break;
+                        case "all":
+                        default:
+                            // No additional filtering
+                            break;
+                    }
+                }
+
+                // Apply search keyword filter (q parameter)
+                if (!string.IsNullOrWhiteSpace(filter.SearchKeyword))
+                {
+                    var keyword = filter.SearchKeyword.ToLower();
+                    baseQuery = baseQuery.Where(e => 
+                        e.Title.ToLower().Contains(keyword) ||
+                        e.Description.ToLower().Contains(keyword) ||
+                        e.Location.ToLower().Contains(keyword));
+                }
+
+                // Apply location filter
+                if (!string.IsNullOrWhiteSpace(filter.Location))
+                {
+                    var location = filter.Location.ToLower();
+                    baseQuery = baseQuery.Where(e => e.Location.ToLower().Contains(location));
+                }
+
+                // Apply date range filters (from/to parameters)
+                if (filter.StartDateFrom.HasValue)
+                {
+                    baseQuery = baseQuery.Where(e => e.StartDate >= filter.StartDateFrom.Value);
+                }
+
+                if (filter.StartDateTo.HasValue)
+                {
+                    baseQuery = baseQuery.Where(e => e.StartDate <= filter.StartDateTo.Value);
+                }
+
+                // Get total count before sorting and pagination
+                var totalCount = await baseQuery.CountAsync();
+
+                // Apply sorting
+                IQueryable<Event> sortedQuery;
+                if (!string.IsNullOrWhiteSpace(filter.SortBy))
+                {
+                    sortedQuery = filter.SortBy.ToLower() switch
+                    {
+                        "title" or "name" => filter.SortDirection?.ToLower() == "desc" 
+                            ? baseQuery.OrderByDescending(e => e.Title)
+                            : baseQuery.OrderBy(e => e.Title),
+                        "startdate" => filter.SortDirection?.ToLower() == "desc"
+                            ? baseQuery.OrderByDescending(e => e.StartDate)
+                            : baseQuery.OrderBy(e => e.StartDate),
+                        "createdat" => filter.SortDirection?.ToLower() == "desc"
+                            ? baseQuery.OrderByDescending(e => e.CreatedAt)
+                            : baseQuery.OrderBy(e => e.CreatedAt),
+                        _ => filter.SortDirection?.ToLower() == "desc"
+                            ? baseQuery.OrderByDescending(e => e.CreatedAt)
+                            : baseQuery.OrderBy(e => e.CreatedAt)
+                    };
+                }
+                else
+                {
+                    // Default sort by CreatedAt desc as per requirements
+                    sortedQuery = filter.SortDirection?.ToLower() == "asc"
+                        ? baseQuery.OrderBy(e => e.CreatedAt)
+                        : baseQuery.OrderByDescending(e => e.CreatedAt);
+                }
+
+                // Apply pagination
+                var skip = (filter.Page - 1) * filter.PageSize;
+                var events = await sortedQuery
+                    .Skip(skip)
+                    .Take(filter.PageSize)
+                    .ToListAsync();
+
+                _logger.LogInformation("Filtered events retrieved for organizer {OrganizerId}. Count: {Count}, Total: {TotalCount}", 
+                    organizerId, events.Count, totalCount);
+                
+                return (events, totalCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting filtered events for organizer: {OrganizerId}", organizerId);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Gets all public events asynchronously.
         /// </summary>
         /// <returns>A list of all public events.</returns>
