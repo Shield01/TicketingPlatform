@@ -20,6 +20,7 @@ namespace Tests.TicketService.Tests
         private readonly Mock<ITicketTierService> _mockTicketTierService;
         private readonly Mock<ITicketIssueService> _mockTicketIssueService;
         private readonly Mock<IQRCodeService> _mockQRCodeService;
+        private readonly Mock<ITicketOverrideService> _mockTicketOverrideService;
         private readonly TicketController _controller;
 
         public TicketControllerTests()
@@ -28,7 +29,8 @@ namespace Tests.TicketService.Tests
             _mockTicketTierService = new Mock<ITicketTierService>();
             _mockTicketIssueService = new Mock<ITicketIssueService>();
             _mockQRCodeService = new Mock<IQRCodeService>();
-            _controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object, _mockQRCodeService.Object);
+            _mockTicketOverrideService = new Mock<ITicketOverrideService>();
+            _controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object, _mockQRCodeService.Object, _mockTicketOverrideService.Object);
 
             // Setup HttpContext with user claims
             var userId = Guid.NewGuid();
@@ -673,7 +675,7 @@ namespace Tests.TicketService.Tests
         {
             // Arrange
             var ticketId = Guid.NewGuid();
-            var controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object, _mockQRCodeService.Object);
+            var controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object, _mockQRCodeService.Object, _mockTicketOverrideService.Object);
             
             // No HttpContext setup - should return unauthorized
 
@@ -839,7 +841,7 @@ namespace Tests.TicketService.Tests
             // Arrange
             var qrCodeData = "eyJhbGciOiJIUzI1NiIsInR5cCI6IlRJQ0tFVCJ9.eyJ0aWNrZXRJZCI6IjEyMzQ1Njc4LTkwYWItY2RlZi0xMjM0LTU2Nzg5MGFiY2RlZiIsInRpY2tldENvZGUiOiJUS1QtMjAyNDEyMDEtVEVTVDEyMzQiLCJldmVudElkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidXNlcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwidGlja2V0VGllcklkIjoiMTIzNDU2NzgtOTBhYi1jZGVmLTEyMzQtNTY3ODkwYWJjZGVmIiwic3RhdHVzIjoiVU5VU0VEIiwiaXNzdWVkQXQiOiIyMDI0LTEyLTAxVDEwOjAwOjAwWiIsImV4cCI6IjIwMjUtMTItMDFUMTA6MDA6MDBaIn0.signature";
             var request = new QRCodeValidationRequest { QRCodeData = qrCodeData };
-            var controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object, _mockQRCodeService.Object);
+            var controller = new TicketController(_mockLogger.Object, _mockTicketTierService.Object, _mockTicketIssueService.Object, _mockQRCodeService.Object, _mockTicketOverrideService.Object);
             
             // No HttpContext setup - should return unauthorized
 

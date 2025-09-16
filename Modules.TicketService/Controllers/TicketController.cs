@@ -23,13 +23,15 @@ namespace Modules.TicketService.Controllers
         private readonly ITicketTierService _ticketTierService;
         private readonly ITicketIssueService _ticketIssueService;
         private readonly IQRCodeService _qrCodeService;
+        private readonly ITicketOverrideService _ticketOverrideService;
 
-        public TicketController(ILogger<TicketController> logger, ITicketTierService ticketTierService, ITicketIssueService ticketIssueService, IQRCodeService qrCodeService)
+        public TicketController(ILogger<TicketController> logger, ITicketTierService ticketTierService, ITicketIssueService ticketIssueService, IQRCodeService qrCodeService, ITicketOverrideService ticketOverrideService)
         {
             _logger = logger;
             _ticketTierService = ticketTierService;
             _ticketIssueService = ticketIssueService;
             _qrCodeService = qrCodeService;
+            _ticketOverrideService = ticketOverrideService;
         }
 
         /// <summary>
@@ -642,6 +644,118 @@ namespace Modules.TicketService.Controllers
             {
                 _logger.LogError(ex, "Error validating QR code");
                 return StatusCode(500, new { error = "An error occurred while validating the QR code." });
+            }
+        }
+
+        /// <summary>
+        /// Overrides the status of a ticket for admin/staff use.
+        /// </summary>
+        /// <param name="ticketId">The unique identifier of the ticket to override.</param>
+        /// <param name="request">The override request containing new status and reason. Valid values for newStatus are UNUSED, USED, CANCELLED, EXPIRED</param>
+        /// <returns>The updated ticket information.</returns>
+        /// <response code="200">Ticket status overridden successfully.</response>
+        /// <response code="400">Invalid override request or ticket status.</response>
+        /// <response code="404">Ticket not found.</response>
+        /// <response code="401">User not authenticated.</response>
+        /// <response code="403">User not authorized to override ticket status.</response>
+        [HttpPost("{ticketId}/override")]
+        [Authorize(Policy = "StaffOrHigher")]
+        [SwaggerOperation(
+            Summary = "Override ticket status (Admin/Staff)",
+            Description = "Allows admin or staff to manually change ticket status for error recovery or special circumstances. All override actions are logged for audit purposes.",
+            OperationId = "OverrideTicketStatus",
+            Tags = new[] { "Tickets" }
+        )]
+        [SwaggerResponse(200, "Ticket status overridden successfully", typeof(TicketResponse))]
+        [SwaggerResponse(400, "Invalid override request or ticket status")]
+        [SwaggerResponse(404, "Ticket not found")]
+        [SwaggerResponse(401, "User not authenticated")]
+        [SwaggerResponse(403, "User not authorized to override ticket status")]
+        public async Task<IActionResult> OverrideTicketStatus(Guid ticketId, [FromBody] TicketOverrideRequest request)
+        {
+            // Get the current user ID from JWT claims
+            var operatorUserId = HttpContext.GetUserId();
+            if (!operatorUserId.HasValue)
+            {
+                _logger.LogWarning("User ID not found in claims for ticket override");
+                return Unauthorized("User not authenticated.");
+            }
+
+            // Get IP address and user agent for audit logging
+            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+            var userAgent = HttpContext.Request.Headers["User-Agent"].ToString();
+
+            _logger.LogInformation("Ticket override requested by user {OperatorUserId} for ticket {TicketId} to status {NewStatus}", 
+                operatorUserId.Value, ticketId, request.NewStatus);
+
+            try
+            {
+                var result = await _ticketOverrideService.OverrideTicketStatusAsync(
+                    ticketId, 
+                    request, 
+                    operatorUserId.Value,
+                    ipAddress,
+                    userAgent);
+
+                if (result == null)
+                {
+                    _logger.LogWarning("Failed to override ticket {TicketId} status to {NewStatus} by user {OperatorUserId}", 
+                        ticketId, request.NewStatus, operatorUserId.Value);
+                    return NotFound(new { error = "Ticket not found or override failed." });
+                }
+
+                _logger.LogInformation("Successfully overrode ticket {TicketId} status to {NewStatus} by user {OperatorUserId}", 
+                    ticketId, request.NewStatus, operatorUserId.Value);
+
+                return Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning("Invalid ticket override request: {ErrorMessage}", ex.Message);
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error overriding ticket {TicketId} status by user {OperatorUserId}", 
+                    ticketId, operatorUserId.Value);
+                return StatusCode(500, new { error = "An error occurred while overriding the ticket status." });
+            }
+        }
+
+        /// <summary>
+        /// Gets the audit log for a specific ticket.
+        /// </summary>
+        /// <param name="ticketId">The unique identifier of the ticket.</param>
+        /// <returns>Audit log entries for the ticket.</returns>
+        /// <response code="200">Audit log retrieved successfully.</response>
+        /// <response code="404">Ticket not found.</response>
+        /// <response code="401">User not authenticated.</response>
+        /// <response code="403">User not authorized to view audit logs.</response>
+        [HttpGet("{ticketId}/audit-log")]
+        [Authorize(Policy = "StaffOrHigher")]
+        [SwaggerOperation(
+            Summary = "Get ticket audit log (Admin/Staff)",
+            Description = "Retrieves the audit log for a specific ticket showing all override actions performed on it.",
+            OperationId = "GetTicketAuditLog",
+            Tags = new[] { "Tickets" }
+        )]
+        [SwaggerResponse(200, "Audit log retrieved successfully", typeof(List<TicketAuditLogResponse>))]
+        [SwaggerResponse(404, "Ticket not found")]
+        [SwaggerResponse(401, "User not authenticated")]
+        [SwaggerResponse(403, "User not authorized to view audit logs")]
+        public async Task<IActionResult> GetTicketAuditLog(Guid ticketId)
+        {
+            _logger.LogInformation("Audit log requested for ticket {TicketId}", ticketId);
+
+            try
+            {
+                var auditLogs = await _ticketOverrideService.GetTicketAuditLogAsync(ticketId);
+                return Ok(auditLogs);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving audit log for ticket {TicketId}", ticketId);
+                return StatusCode(500, new { error = "An error occurred while retrieving the audit log." });
             }
         }
     }

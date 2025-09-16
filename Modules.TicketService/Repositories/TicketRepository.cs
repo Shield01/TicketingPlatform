@@ -470,5 +470,110 @@ namespace Modules.TicketService.Repositories
                 return false;
             }
         }
+
+        /// <summary>
+        /// Overrides the status of a ticket (admin/staff action).
+        /// </summary>
+        /// <param name="ticketId">The ticket ID.</param>
+        /// <param name="newStatus">The new status to set.</param>
+        /// <param name="forceOverride">Whether to force the override even if the ticket is in an invalid state.</param>
+        /// <returns>The updated ticket if successful, null otherwise.</returns>
+        public async Task<Ticket?> OverrideTicketStatusAsync(Guid ticketId, string newStatus, bool forceOverride = false)
+        {
+            _logger.LogInformation("Overriding ticket {TicketId} status to {NewStatus}, forceOverride: {ForceOverride}", 
+                ticketId, newStatus, forceOverride);
+
+            try
+            {
+                var ticket = await GetTicketByIdAsync(ticketId);
+                if (ticket == null)
+                {
+                    _logger.LogWarning("Ticket {TicketId} not found for status override", ticketId);
+                    return null;
+                }
+
+                var previousStatus = ticket.Status;
+
+                // Validate status transition if not forcing
+                if (!forceOverride && !IsValidStatusTransition(previousStatus, newStatus))
+                {
+                    _logger.LogWarning("Invalid status transition from {PreviousStatus} to {NewStatus} for ticket {TicketId}", 
+                        previousStatus, newStatus, ticketId);
+                    return null;
+                }
+
+                // Update the ticket status
+                ticket.Status = newStatus;
+                ticket.UpdatedAt = DateTime.UtcNow;
+
+                // Handle specific status changes
+                switch (newStatus.ToUpper())
+                {
+                    case "USED":
+                        ticket.IsUsed = true;
+                        ticket.UsedAt = DateTime.UtcNow;
+                        break;
+                    case "UNUSED":
+                        ticket.IsUsed = false;
+                        ticket.UsedAt = null;
+                        break;
+                    case "CANCELLED":
+                        // No additional changes needed
+                        break;
+                    case "EXPIRED":
+                        // No additional changes needed
+                        break;
+                }
+
+                _context.Tickets.Update(ticket);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Successfully overrode ticket {TicketId} status from {PreviousStatus} to {NewStatus}", 
+                    ticketId, previousStatus, newStatus);
+
+                return ticket;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error overriding ticket {TicketId} status to {NewStatus}", ticketId, newStatus);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Validates if a status transition is allowed under normal circumstances.
+        /// </summary>
+        /// <param name="currentStatus">The current ticket status.</param>
+        /// <param name="newStatus">The desired new status.</param>
+        /// <returns>True if the transition is valid, false otherwise.</returns>
+        private static bool IsValidStatusTransition(string currentStatus, string newStatus)
+        {
+            // Define valid status transitions
+            return (currentStatus.ToUpper(), newStatus.ToUpper()) switch
+            {
+                // From UNUSED
+                ("UNUSED", "USED") => true,
+                ("UNUSED", "CANCELLED") => true,
+                ("UNUSED", "EXPIRED") => true,
+                
+                // From USED (only to UNUSED with admin override)
+                ("USED", "UNUSED") => true, // Allow admin to reset
+                ("USED", "CANCELLED") => true, // Allow admin to cancel used ticket
+                
+                // From CANCELLED
+                ("CANCELLED", "UNUSED") => true, // Allow admin to reactivate
+                ("CANCELLED", "EXPIRED") => true,
+                
+                // From EXPIRED
+                ("EXPIRED", "UNUSED") => true, // Allow admin to reactivate
+                ("EXPIRED", "CANCELLED") => true,
+                
+                // Same status (no-op)
+                var (current, new_) when current == new_ => true,
+                
+                // All other transitions are invalid
+                _ => false
+            };
+        }
     }
 }
