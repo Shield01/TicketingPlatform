@@ -127,5 +127,14 @@ namespace Modules.TicketService.Repositories
         /// <param name="paymentId">The payment ID.</param>
         /// <returns>True if payment is valid for ticket issuance, false otherwise.</returns>
         Task<bool> ValidatePaymentForTicketIssuanceAsync(Guid paymentId);
+
+        /// <summary>
+        /// Overrides the status of a ticket (admin/staff action).
+        /// </summary>
+        /// <param name="ticketId">The ticket ID.</param>
+        /// <param name="newStatus">The new status to set.</param>
+        /// <param name="forceOverride">Whether to force the override even if the ticket is in an invalid state.</param>
+        /// <returns>The updated ticket if successful, null otherwise.</returns>
+        Task<Ticket?> OverrideTicketStatusAsync(Guid ticketId, string newStatus, bool forceOverride = false);
     }
 }

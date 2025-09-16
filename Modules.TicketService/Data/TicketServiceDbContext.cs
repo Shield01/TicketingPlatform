@@ -27,6 +27,11 @@ namespace Modules.TicketService.Data
         public DbSet<TicketTier> TicketTiers { get; set; }
 
         /// <summary>
+        /// Gets or sets the TicketAuditLogs DbSet.
+        /// </summary>
+        public DbSet<TicketAuditLog> TicketAuditLogs { get; set; }
+
+        /// <summary>
         /// Configures the model for the TicketService module.
         /// </summary>
         /// <param name="modelBuilder">The model builder instance.</param>
@@ -155,6 +160,63 @@ namespace Modules.TicketService.Data
                 entity.HasIndex(t => t.Status);
                 entity.HasIndex(t => t.IsActive);
                 entity.HasIndex(t => t.CreatedAt);
+            });
+
+            // Configure TicketAuditLog entity
+            modelBuilder.Entity<TicketAuditLog>(entity =>
+            {
+                entity.ToTable("app_ticket_audit_logs");
+                entity.HasKey(tal => tal.Id);
+                entity.Property(tal => tal.Id).ValueGeneratedOnAdd();
+
+                entity.Property(tal => tal.ActionType)
+                    .IsRequired()
+                    .HasMaxLength(100);
+
+                entity.Property(tal => tal.PreviousStatus)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                entity.Property(tal => tal.NewStatus)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                entity.Property(tal => tal.Reason)
+                    .IsRequired()
+                    .HasMaxLength(500);
+
+                entity.Property(tal => tal.AdditionalDetails)
+                    .HasMaxLength(2000);
+
+                entity.Property(tal => tal.WasForced)
+                    .HasDefaultValue(false);
+
+                entity.Property(tal => tal.IpAddress)
+                    .HasMaxLength(45);
+
+                entity.Property(tal => tal.UserAgent)
+                    .HasMaxLength(500);
+
+                entity.Property(tal => tal.IsActive)
+                    .HasDefaultValue(true);
+
+                entity.Property(tal => tal.PerformedAt)
+                    .HasDefaultValueSql("NOW()");
+
+                // Configure foreign key relationship to Ticket
+                entity.HasOne(tal => tal.Ticket)
+                    .WithMany()
+                    .HasForeignKey(tal => tal.TicketId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Add indexes for better performance and queries
+                entity.HasIndex(tal => tal.TicketId);
+                entity.HasIndex(tal => tal.PerformedByUserId);
+                entity.HasIndex(tal => tal.ActionType);
+                entity.HasIndex(tal => tal.PerformedAt);
+                entity.HasIndex(tal => tal.IsActive);
+                entity.HasIndex(tal => new { tal.TicketId, tal.PerformedAt })
+                    .HasDatabaseName("IX_app_ticket_audit_logs_ticket_performed_at");
             });
         }
     }

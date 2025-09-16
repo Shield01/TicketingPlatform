@@ -48,9 +48,11 @@ namespace Modules.TicketService.Services
             // Register repositories and services
             services.AddScoped<ITicketTierRepository, TicketTierRepository>();
             services.AddScoped<ITicketRepository, TicketRepository>();
+            services.AddScoped<ITicketAuditLogRepository, TicketAuditLogRepository>();
             services.AddScoped<ITicketTierService, TicketTierService>();
             services.AddScoped<ITicketIssueService, TicketIssueService>();
             services.AddScoped<IQRCodeService, QRCodeService>();
+            services.AddScoped<ITicketOverrideService, TicketOverrideService>();
             
             // Register email services
             services.AddScoped<IEmailTemplateService, EmailTemplateService>();
