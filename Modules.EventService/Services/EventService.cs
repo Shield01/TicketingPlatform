@@ -855,6 +855,97 @@ namespace Modules.EventService.Services
         }
 
         /// <summary>
+        /// Gets all events created by the authenticated user (organizer) with filtering and pagination.
+        /// </summary>
+        /// <param name="organizerId">The ID of the organizer (current user).</param>
+        /// <param name="filter">The filter criteria for events including pagination, sorting, and search.</param>
+        /// <returns>A paginated response of events owned by the organizer.</returns>
+        public async Task<PaginatedEventsResponse> GetMyEventsAsync(Guid organizerId, EventFilterRequest filter)
+        {
+            try
+            {
+                _logger.LogInformation("Getting events for organizer {OrganizerId} with filter: {@Filter}", organizerId, filter);
+
+                // Validate filter parameters
+                var (isValid, errorMessage) = ValidateEventFilter(filter);
+                if (!isValid)
+                {
+                    throw new ArgumentException(errorMessage);
+                }
+
+                // Get filtered events from repository
+                var (events, totalCount) = await _eventRepository.GetFilteredEventsByOrganizerAsync(organizerId, filter);
+
+                // Convert to response objects with ticket tier information
+                var eventResponses = new List<EventResponse>();
+                foreach (var eventEntity in events)
+                {
+                    var eventResponse = await MapEventToResponseAsync(eventEntity);
+                    eventResponses.Add(eventResponse);
+                }
+
+                // Calculate pagination info
+                var totalPages = (int)Math.Ceiling((double)totalCount / filter.PageSize);
+                var hasNextPage = filter.Page < totalPages;
+                var hasPreviousPage = filter.Page > 1;
+
+                var response = new PaginatedEventsResponse
+                {
+                    Events = eventResponses,
+                    TotalCount = totalCount,
+                    Page = filter.Page,
+                    PageSize = filter.PageSize,
+                    TotalPages = totalPages,
+                    HasNextPage = hasNextPage,
+                    HasPreviousPage = hasPreviousPage
+                };
+
+                _logger.LogInformation("Retrieved {Count} events for organizer {OrganizerId} (Page {Page}/{TotalPages})", 
+                    eventResponses.Count, organizerId, filter.Page, totalPages);
+
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting events for organizer: {OrganizerId}", organizerId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Validates event filter parameters.
+        /// </summary>
+        /// <param name="filter">The filter to validate.</param>
+        /// <returns>A tuple containing validation result and error message if any.</returns>
+        private static (bool IsValid, string? ErrorMessage) ValidateEventFilter(EventFilterRequest filter)
+        {
+            if (filter == null)
+            {
+                return (false, "Filter cannot be null");
+            }
+
+            if (filter.Page < 1)
+            {
+                return (false, "Page must be greater than 0");
+            }
+
+            if (filter.PageSize < 1 || filter.PageSize > 100)
+            {
+                return (false, "PageSize must be between 1 and 100");
+            }
+
+            if (filter.StartDateFrom.HasValue && filter.StartDateTo.HasValue)
+            {
+                if (filter.StartDateFrom.Value > filter.StartDateTo.Value)
+                {
+                    return (false, "StartDateFrom cannot be later than StartDateTo");
+                }
+            }
+
+            return (true, null);
+        }
+
+        /// <summary>
         /// Checks if an event has any issued tickets.
         /// This is a placeholder implementation until TicketService is fully implemented.
         /// </summary>

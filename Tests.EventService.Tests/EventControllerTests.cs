@@ -498,5 +498,213 @@ namespace Tests.EventService.Tests
 
             _mockEventService.Verify(s => s.GetPublicEventByIdAsync(eventId), Times.Once);
         }
+
+        #region GetMyEvents Tests
+
+        [Fact]
+        public async Task GetMyEvents_ValidRequest_ReturnsOkResult()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var expectedResponse = new PaginatedEventsResponse
+            {
+                Events = new List<EventResponse>
+                {
+                    new EventResponse
+                    {
+                        Id = Guid.NewGuid(),
+                        Title = "My Test Event",
+                        Description = "Test Description",
+                        StartDate = DateTime.UtcNow.AddDays(1),
+                        EndDate = DateTime.UtcNow.AddDays(2),
+                        Location = "Test Location",
+                        Status = "Draft",
+                        OrganizerId = userId,
+                        CreatedAt = DateTime.UtcNow,
+                        OrganizerName = "John Doe"
+                    }
+                },
+                TotalCount = 1,
+                Page = 1,
+                PageSize = 20,
+                TotalPages = 1,
+                HasNextPage = false,
+                HasPreviousPage = false
+            };
+
+            _mockEventService.Setup(s => s.GetMyEventsAsync(userId, It.IsAny<EventFilterRequest>()))
+                .ReturnsAsync(expectedResponse);
+
+            // Set up user claims with extension method support
+            var claims = new List<Claim>
+            {
+                new Claim("UserId", userId.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString())
+            };
+            var identity = new ClaimsIdentity(claims, "Test");
+            var principal = new ClaimsPrincipal(identity);
+            _controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            };
+
+            // Act
+            var result = await _controller.GetMyEvents();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var response = Assert.IsType<PaginatedEventsResponse>(okResult.Value);
+            Assert.Equal(1, response.Events.Count);
+            Assert.Equal("My Test Event", response.Events.First().Title);
+            Assert.Equal(userId, response.Events.First().OrganizerId);
+
+            _mockEventService.Verify(s => s.GetMyEventsAsync(userId, It.IsAny<EventFilterRequest>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetMyEvents_UserNotAuthenticated_ReturnsUnauthorized()
+        {
+            // Arrange - No user context set
+
+            // Act
+            var result = await _controller.GetMyEvents();
+
+            // Assert
+            var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+            Assert.Equal("User not authenticated.", unauthorizedResult.Value);
+
+            _mockEventService.Verify(s => s.GetMyEventsAsync(It.IsAny<Guid>(), It.IsAny<EventFilterRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetMyEvents_WithFilters_PassesFiltersCorrectly()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var expectedResponse = new PaginatedEventsResponse
+            {
+                Events = new List<EventResponse>(),
+                TotalCount = 0,
+                Page = 2,
+                PageSize = 5,
+                TotalPages = 0,
+                HasNextPage = false,
+                HasPreviousPage = true
+            };
+
+            _mockEventService.Setup(s => s.GetMyEventsAsync(userId, It.IsAny<EventFilterRequest>()))
+                .ReturnsAsync(expectedResponse);
+
+            // Set up user claims
+            var claims = new List<Claim>
+            {
+                new Claim("UserId", userId.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString())
+            };
+            var identity = new ClaimsIdentity(claims, "Test");
+            var principal = new ClaimsPrincipal(identity);
+            _controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            };
+
+            // Act
+            var result = await _controller.GetMyEvents(
+                status: "Draft,Published",
+                category: "Technology",
+                eventType: "upcoming",
+                q: "test search",
+                location: "New York",
+                from: DateTime.UtcNow.AddDays(1),
+                to: DateTime.UtcNow.AddDays(30),
+                page: 2,
+                pageSize: 5,
+                sortBy: "StartDate",
+                sortDir: "asc"
+            );
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var response = Assert.IsType<PaginatedEventsResponse>(okResult.Value);
+
+            _mockEventService.Verify(s => s.GetMyEventsAsync(userId, It.Is<EventFilterRequest>(f =>
+                f.Status == "Draft,Published" &&
+                f.Category == "Technology" &&
+                f.EventType == "upcoming" &&
+                f.SearchKeyword == "test search" &&
+                f.Location == "New York" &&
+                f.Page == 2 &&
+                f.PageSize == 5 &&
+                f.SortBy == "StartDate" &&
+                f.SortDirection == "asc"
+            )), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetMyEvents_ServiceThrowsArgumentException_ReturnsBadRequest()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+
+            _mockEventService.Setup(s => s.GetMyEventsAsync(userId, It.IsAny<EventFilterRequest>()))
+                .ThrowsAsync(new ArgumentException("Invalid page size"));
+
+            // Set up user claims
+            var claims = new List<Claim>
+            {
+                new Claim("UserId", userId.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString())
+            };
+            var identity = new ClaimsIdentity(claims, "Test");
+            var principal = new ClaimsPrincipal(identity);
+            _controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            };
+
+            // Act
+            var result = await _controller.GetMyEvents(pageSize: 101);
+
+            // Assert
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+            var errorResponse = badRequestResult.Value;
+            Assert.NotNull(errorResponse);
+
+            _mockEventService.Verify(s => s.GetMyEventsAsync(userId, It.IsAny<EventFilterRequest>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetMyEvents_ServiceThrowsGeneralException_ReturnsInternalServerError()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+
+            _mockEventService.Setup(s => s.GetMyEventsAsync(userId, It.IsAny<EventFilterRequest>()))
+                .ThrowsAsync(new InvalidOperationException("Database error"));
+
+            // Set up user claims
+            var claims = new List<Claim>
+            {
+                new Claim("UserId", userId.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString())
+            };
+            var identity = new ClaimsIdentity(claims, "Test");
+            var principal = new ClaimsPrincipal(identity);
+            _controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            };
+
+            // Act
+            var result = await _controller.GetMyEvents();
+
+            // Assert
+            var statusResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(500, statusResult.StatusCode);
+
+            _mockEventService.Verify(s => s.GetMyEventsAsync(userId, It.IsAny<EventFilterRequest>()), Times.Once);
+        }
+
+        #endregion
     }
 } 

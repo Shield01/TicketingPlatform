@@ -270,6 +270,99 @@ namespace Modules.EventService.Controllers
         }
 
         /// <summary>
+        /// Gets all events created by the authenticated user (organizer) with filtering and pagination.
+        /// </summary>
+        /// <param name="status">Filter by event status (Draft, Published, Cancelled) - can be comma-separated.</param>
+        /// <param name="category">Filter by event category.</param>
+        /// <param name="eventType">Filter by event type (upcoming, past, all).</param>
+        /// <param name="q">Search by keyword in title, description, or location.</param>
+        /// <param name="location">Filter by location.</param>
+        /// <param name="from">Filter by start date from (ISO date).</param>
+        /// <param name="to">Filter by start date to (ISO date).</param>
+        /// <param name="page">Page number for pagination (default: 1).</param>
+        /// <param name="pageSize">Number of items per page (default: 20, max: 100).</param>
+        /// <param name="sortBy">Sort field (Title, StartDate, CreatedAt, Name).</param>
+        /// <param name="sortDir">Sort direction (asc, desc).</param>
+        /// <returns>Paginated list of events created by the current user.</returns>
+        /// <response code="200">Events retrieved successfully.</response>
+        /// <response code="400">Invalid filter parameters provided.</response>
+        /// <response code="401">User not authenticated.</response>
+        /// <response code="403">User not authorized (should not occur for owner).</response>
+        [HttpGet("mine")]
+        [Authorize(Policy = "OrganiserOrAdmin")]
+        [SwaggerOperation(
+            Summary = "Get my events (all statuses)",
+            Description = "Retrieves all events created by the authenticated user (organizer), including Draft, Published, Cancelled, and other statuses. Supports advanced filtering, search, and sorting options. Only the event owner or Admin can access this endpoint.",
+            OperationId = "GetMyEvents",
+            Tags = new[] { "Events" }
+        )]
+        [SwaggerResponse(200, "My events retrieved successfully", typeof(PaginatedEventsResponse))]
+        [SwaggerResponse(400, "Invalid filter parameters")]
+        [SwaggerResponse(401, "User not authenticated")]
+        [SwaggerResponse(403, "User not authorized")]
+        public async Task<IActionResult> GetMyEvents(
+            [FromQuery] string? status = null,
+            [FromQuery] string? category = null,
+            [FromQuery] string? eventType = null,
+            [FromQuery] string? q = null,
+            [FromQuery] string? location = null,
+            [FromQuery] DateTime? from = null,
+            [FromQuery] DateTime? to = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            [FromQuery] string? sortBy = null,
+            [FromQuery] string? sortDir = "desc")
+        {
+            try
+            {
+                // Get the current user ID from JWT claims
+                var userId = HttpContext.GetUserId();
+                if (!userId.HasValue)
+                {
+                    _logger.LogWarning("User ID not found in claims for my events retrieval");
+                    return Unauthorized("User not authenticated.");
+                }
+
+                _logger.LogInformation("My events retrieval attempt for user {UserId} with filters: Status={Status}, Category={Category}, EventType={EventType}, Page={Page}", 
+                    userId.Value, status, category, eventType, page);
+
+                // Build the filter request
+                var filter = new EventFilterRequest
+                {
+                    Status = status,
+                    Category = category,
+                    EventType = eventType,
+                    SearchKeyword = q, // Map 'q' parameter to SearchKeyword
+                    Location = location,
+                    StartDateFrom = from, // Map 'from' parameter to StartDateFrom
+                    StartDateTo = to, // Map 'to' parameter to StartDateTo
+                    Page = page,
+                    PageSize = pageSize,
+                    SortBy = sortBy,
+                    SortDirection = sortDir // Map 'sortDir' parameter to SortDirection
+                };
+
+                // Get the user's events
+                var response = await _eventService.GetMyEventsAsync(userId.Value, filter);
+
+                _logger.LogInformation("My events retrieved successfully for user {UserId}. Count: {Count}, Total: {TotalCount}, Page: {Page}/{TotalPages}", 
+                    userId.Value, response.Events.Count, response.TotalCount, response.Page, response.TotalPages);
+
+                return Ok(response);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning("Invalid filter parameters for my events: {ErrorMessage}", ex.Message);
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving my events");
+                return StatusCode(500, new { error = "An error occurred while retrieving your events." });
+            }
+        }
+
+        /// <summary>
         /// Deletes an event.
         /// </summary>
         /// <param name="id">The unique identifier of the event to delete.</param>
