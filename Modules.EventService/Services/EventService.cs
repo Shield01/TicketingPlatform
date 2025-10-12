@@ -77,6 +77,7 @@ namespace Modules.EventService.Services
                     EndDate = request.EndDate,
                     Location = request.Location,
                     Category = request.Category,
+                    ImageURL = request.ImageURL,
                     IsPublic = request.IsPublic,
                     IsPublished = isPublished,
                     Status = status,
@@ -222,7 +223,8 @@ namespace Modules.EventService.Services
                 NormalizeFilterParameters(filter);
 
                 var (events, totalCount) = await _eventRepository.GetFilteredPublicEventsAsync(filter);
-                var eventViews = events.Select(MapEventToViewDTO);
+                var eventViewTasks = events.Select(async e => await MapEventToViewDTOAsync(e));
+                var eventViews = await Task.WhenAll(eventViewTasks);
 
                 var totalPages = (int)Math.Ceiling((double)totalCount / filter.PageSize);
                 var hasNextPage = filter.Page < totalPages;
@@ -239,7 +241,7 @@ namespace Modules.EventService.Services
                     HasPreviousPage = hasPreviousPage
                 };
 
-                _logger.LogDebug("Filtered public events retrieved. Count: {Count}, Total: {TotalCount}", eventViews.Count(), totalCount);
+                _logger.LogDebug("Filtered public events retrieved. Count: {Count}, Total: {TotalCount}", eventViews.Length, totalCount);
                 return response;
             }
             catch (Exception ex)
@@ -285,6 +287,7 @@ namespace Modules.EventService.Services
                 existingEvent.EndDate = request.EndDate;
                 existingEvent.Location = request.Location;
                 existingEvent.Category = request.Category;
+                existingEvent.ImageURL = request.ImageURL;
                 existingEvent.IsPublic = request.IsPublic;
                 existingEvent.Status = request.Status;
                 existingEvent.UpdatedAt = DateTime.UtcNow;
@@ -447,6 +450,7 @@ namespace Modules.EventService.Services
                 EndDate = @event.EndDate,
                 Location = @event.Location,
                 Category = @event.Category,
+                ImageURL = @event.ImageURL,
                 IsPublic = @event.IsPublic,
                 IsPublished = @event.IsPublished,
                 Status = @event.Status,
@@ -465,11 +469,36 @@ namespace Modules.EventService.Services
         /// </summary>
         /// <param name="event">The event entity to map.</param>
         /// <returns>The mapped EventViewDTO.</returns>
-        private static EventViewDTO MapEventToViewDTO(Event @event)
+        private async Task<EventViewDTO> MapEventToViewDTOAsync(Event @event)
         {
             var now = DateTime.UtcNow;
             var isUpcoming = @event.StartDate > now;
             var daysUntilEvent = isUpcoming ? (int)(@event.StartDate - now).TotalDays : 0;
+
+            // Get minimum ticket price efficiently
+            decimal? minimumPrice = null;
+            string? minimumCurrency = null;
+            try
+            {
+                var tiers = await _ticketTierService.GetEventTicketTiersAsync(@event.Id);
+                var availableTiers = tiers.Where(t => t.IsAvailable && 
+                                                      t.SoldQuantity < t.MaxQuantity && 
+                                                      (!t.SaleStartDate.HasValue || t.SaleStartDate <= now) &&
+                                                      (!t.SaleEndDate.HasValue || t.SaleEndDate >= now))
+                                          .OrderBy(t => t.Price)
+                                          .FirstOrDefault();
+
+                if (availableTiers != null)
+                {
+                    minimumPrice = availableTiers.Price;
+                    minimumCurrency = availableTiers.Currency;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to calculate minimum ticket price for event {EventId}", @event.Id);
+                // Continue without minimum price if there's an error
+            }
 
             return new EventViewDTO
             {
@@ -480,6 +509,9 @@ namespace Modules.EventService.Services
                 EndDate = @event.EndDate,
                 Location = @event.Location,
                 Category = @event.Category,
+                ImageURL = @event.ImageURL,
+                MinimumTicketPrice = minimumPrice,
+                MinimumTicketPriceCurrency = minimumCurrency,
                 OrganizerName = @event.Organizer != null 
                     ? $"{@event.Organizer.FirstName} {@event.Organizer.LastName}".Trim()
                     : string.Empty,
@@ -647,6 +679,7 @@ namespace Modules.EventService.Services
             @event.EndDate = request.EndDate;
             @event.Location = request.Location;
             @event.Category = request.Category;
+            @event.ImageURL = request.ImageURL;
             @event.IsPublic = request.IsPublic;
             @event.Status = request.Status;
             @event.UpdatedAt = DateTime.UtcNow;
@@ -660,6 +693,7 @@ namespace Modules.EventService.Services
                 EndDate = @event.EndDate,
                 Location = @event.Location,
                 Category = @event.Category,
+                ImageURL = @event.ImageURL,
                 IsPublic = @event.IsPublic,
                 IsPublished = @event.IsPublished,
                 Status = @event.Status
@@ -772,6 +806,7 @@ namespace Modules.EventService.Services
                     EndDate = @event.EndDate,
                     Location = @event.Location,
                     Category = @event.Category,
+                    ImageURL = @event.ImageURL,
                     IsPublic = @event.IsPublic,
                     IsPublished = true, // For validation purposes
                     Status = "Published"
