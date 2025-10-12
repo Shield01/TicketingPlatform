@@ -38,6 +38,7 @@ namespace Tests.EventService.Tests
                 EndDate = DateTime.UtcNow.AddDays(2),
                 Location = "Test Location",
                 Category = "Test Category",
+                ImageURL = "https://example.com/image.jpg",
                 IsPublic = true
             };
 

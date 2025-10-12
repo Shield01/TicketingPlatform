@@ -46,6 +46,11 @@ namespace Modules.EventService.DTOs
         public string? Category { get; set; }
 
         /// <summary>
+        /// The URL of the event's thumbnail image.
+        /// </summary>
+        public string? ImageURL { get; set; }
+
+        /// <summary>
         /// Whether the event is public or private.
         /// </summary>
         public bool IsPublic { get; set; }

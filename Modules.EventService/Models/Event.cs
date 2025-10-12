@@ -54,6 +54,12 @@ namespace Modules.EventService.Models
         public string? Category { get; set; }
 
         /// <summary>
+        /// The URL of the event's thumbnail image.
+        /// </summary>
+        [StringLength(1000)]
+        public string? ImageURL { get; set; }
+
+        /// <summary>
         /// Whether the event is public or private.
         /// </summary>
         public bool IsPublic { get; set; } = true;
