@@ -50,13 +50,6 @@ namespace Modules.EventService.DTOs
         public string? Category { get; set; }
 
         /// <summary>
-        /// The updated URL of the event's thumbnail image.
-        /// </summary>
-        /// <example>https://example.com/images/updated-event-thumbnail.jpg</example>
-        [StringLength(1000)]
-        public string? ImageURL { get; set; }
-
-        /// <summary>
         /// Whether the event is public or private.
         /// </summary>
         /// <example>true</example>
