@@ -223,36 +223,8 @@ namespace Modules.EventService.Services
                 NormalizeFilterParameters(filter);
 
                 var (events, totalCount) = await _eventRepository.GetFilteredPublicEventsAsync(filter);
-                
-                // Batch load all ticket tiers for all events at once to avoid concurrency issues and N+1 queries
-                var eventIds = events.Select(e => e.Id).ToList();
-                var allTicketTiers = new Dictionary<Guid, List<Modules.TicketService.DTOs.TicketTierResponse>>();
-                
-                if (eventIds.Any())
-                {
-                    try
-                    {
-                        // Get all ticket tiers for all events in a single batch call
-                        foreach (var eventId in eventIds)
-                        {
-                            var tiers = await _ticketTierService.GetEventTicketTiersAsync(eventId);
-                            allTicketTiers[eventId] = tiers.ToList();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to batch load ticket tiers for events");
-                        // Continue without ticket pricing if batch loading fails
-                    }
-                }
-                
-                // Process events with pre-loaded ticket tiers
-                var eventViews = new List<EventViewDTO>();
-                foreach (var eventEntity in events)
-                {
-                    var eventView = MapEventToViewDTOWithTiers(eventEntity, allTicketTiers.GetValueOrDefault(eventEntity.Id, new List<Modules.TicketService.DTOs.TicketTierResponse>()));
-                    eventViews.Add(eventView);
-                }
+                var eventViewTasks = events.Select(async e => await MapEventToViewDTOAsync(e));
+                var eventViews = await Task.WhenAll(eventViewTasks);
 
                 var totalPages = (int)Math.Ceiling((double)totalCount / filter.PageSize);
                 var hasNextPage = filter.Page < totalPages;
@@ -269,7 +241,7 @@ namespace Modules.EventService.Services
                     HasPreviousPage = hasPreviousPage
                 };
 
-                _logger.LogDebug("Filtered public events retrieved. Count: {Count}, Total: {TotalCount}", eventViews.Count, totalCount);
+                _logger.LogDebug("Filtered public events retrieved. Count: {Count}, Total: {TotalCount}", eventViews.Length, totalCount);
                 return response;
             }
             catch (Exception ex)
@@ -515,64 +487,6 @@ namespace Modules.EventService.Services
                                                       (!t.SaleEndDate.HasValue || t.SaleEndDate >= now))
                                           .OrderBy(t => t.Price)
                                           .FirstOrDefault();
-
-                if (availableTiers != null)
-                {
-                    minimumPrice = availableTiers.Price;
-                    minimumCurrency = availableTiers.Currency;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to calculate minimum ticket price for event {EventId}", @event.Id);
-                // Continue without minimum price if there's an error
-            }
-
-            return new EventViewDTO
-            {
-                Id = @event.Id,
-                Title = @event.Title,
-                Description = @event.Description,
-                StartDate = @event.StartDate,
-                EndDate = @event.EndDate,
-                Location = @event.Location,
-                Category = @event.Category,
-                ImageURL = @event.ImageURL,
-                MinimumTicketPrice = minimumPrice,
-                MinimumTicketPriceCurrency = minimumCurrency,
-                OrganizerName = @event.Organizer != null 
-                    ? $"{@event.Organizer.FirstName} {@event.Organizer.LastName}".Trim()
-                    : string.Empty,
-                CreatedAt = @event.CreatedAt,
-                IsUpcoming = isUpcoming,
-                DaysUntilEvent = daysUntilEvent
-            };
-        }
-
-        /// <summary>
-        /// Maps an Event entity to EventViewDTO for public viewing with pre-loaded ticket tiers.
-        /// </summary>
-        /// <param name="event">The event entity to map.</param>
-        /// <param name="ticketTiers">Pre-loaded ticket tiers for this event.</param>
-        /// <returns>The mapped EventViewDTO.</returns>
-        private EventViewDTO MapEventToViewDTOWithTiers(Event @event, List<Modules.TicketService.DTOs.TicketTierResponse> ticketTiers)
-        {
-            var now = DateTime.UtcNow;
-            var isUpcoming = @event.StartDate > now;
-            var daysUntilEvent = isUpcoming ? (int)(@event.StartDate - now).TotalDays : 0;
-
-            // Calculate minimum ticket price from pre-loaded tiers
-            decimal? minimumPrice = null;
-            string? minimumCurrency = null;
-            
-            try
-            {
-                var availableTiers = ticketTiers.Where(t => t.IsAvailable && 
-                                                          t.SoldQuantity < t.MaxQuantity && 
-                                                          (!t.SaleStartDate.HasValue || t.SaleStartDate <= now) &&
-                                                          (!t.SaleEndDate.HasValue || t.SaleEndDate >= now))
-                                              .OrderBy(t => t.Price)
-                                              .FirstOrDefault();
 
                 if (availableTiers != null)
                 {
