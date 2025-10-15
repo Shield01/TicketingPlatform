@@ -86,6 +86,18 @@ namespace Modules.EventService.DTOs
         public decimal? MinimumPrice { get; set; }
 
         /// <summary>
+        /// The currency of the minimum ticket price (e.g., "USD", "NGN", "EUR").
+        /// </summary>
+        public string? MinimumPriceCurrency { get; set; }
+
+        /// <summary>
+        /// Formatted minimum price with currency for display (e.g., "50 USD", "5000 NGN").
+        /// </summary>
+        public string? MinimumPriceFormatted => MinimumPrice.HasValue && !string.IsNullOrEmpty(MinimumPriceCurrency) 
+            ? $"{MinimumPrice:N2} {MinimumPriceCurrency}" 
+            : null;
+
+        /// <summary>
         /// The URL of the event's thumbnail image.
         /// </summary>
         public string? ImageUrl { get; set; }

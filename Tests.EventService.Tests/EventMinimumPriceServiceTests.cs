@@ -301,7 +301,7 @@ namespace Tests.EventService.Tests
                 .ReturnsAsync((Event?)null);
 
             // Act
-            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 50m);
+            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 50m, "USD");
 
             // Assert
             Assert.Null(result);
@@ -324,12 +324,12 @@ namespace Tests.EventService.Tests
                 .ReturnsAsync(@event);
 
             // Act
-            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 50m);
+            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 50m, "USD");
 
             // Assert
             Assert.Equal(50m, result);
             _mockEventRepository.Verify(x => x.UpdateEventAsync(It.Is<Event>(e => 
-                e.Id == eventId && e.MinimumPrice == 50m)), Times.Once);
+                e.Id == eventId && e.MinimumPrice == 50m && e.MinimumPriceCurrency == "USD")), Times.Once);
         }
 
         [Fact]
@@ -341,19 +341,20 @@ namespace Tests.EventService.Tests
             {
                 Id = eventId,
                 Title = "Test Event",
-                MinimumPrice = 100m
+                MinimumPrice = 100m,
+                MinimumPriceCurrency = "USD"
             };
 
             _mockEventRepository.Setup(x => x.GetEventByIdAsync(eventId))
                 .ReturnsAsync(@event);
 
             // Act
-            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 75m);
+            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 75m, "NGN");
 
             // Assert
             Assert.Equal(75m, result);
             _mockEventRepository.Verify(x => x.UpdateEventAsync(It.Is<Event>(e => 
-                e.Id == eventId && e.MinimumPrice == 75m)), Times.Once);
+                e.Id == eventId && e.MinimumPrice == 75m && e.MinimumPriceCurrency == "NGN")), Times.Once);
         }
 
         [Fact]
@@ -365,14 +366,15 @@ namespace Tests.EventService.Tests
             {
                 Id = eventId,
                 Title = "Test Event",
-                MinimumPrice = 50m
+                MinimumPrice = 50m,
+                MinimumPriceCurrency = "USD"
             };
 
             _mockEventRepository.Setup(x => x.GetEventByIdAsync(eventId))
                 .ReturnsAsync(@event);
 
             // Act
-            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 100m);
+            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 100m, "USD");
 
             // Assert
             Assert.Equal(50m, result); // Should remain at original price
@@ -388,14 +390,15 @@ namespace Tests.EventService.Tests
             {
                 Id = eventId,
                 Title = "Test Event",
-                MinimumPrice = 50m
+                MinimumPrice = 50m,
+                MinimumPriceCurrency = "USD"
             };
 
             _mockEventRepository.Setup(x => x.GetEventByIdAsync(eventId))
                 .ReturnsAsync(@event);
 
             // Act
-            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 50m);
+            var result = await _service.UpdateMinimumPriceIfLowerAsync(eventId, 50m, "USD");
 
             // Assert
             Assert.Equal(50m, result); // Should remain at original price

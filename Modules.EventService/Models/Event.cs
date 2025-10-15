@@ -103,6 +103,13 @@ namespace Modules.EventService.Models
         public decimal? MinimumPrice { get; set; }
 
         /// <summary>
+        /// The currency of the minimum ticket price (e.g., "USD", "NGN", "EUR").
+        /// This is set automatically from the cheapest available ticket tier.
+        /// </summary>
+        [StringLength(3)]
+        public string? MinimumPriceCurrency { get; set; }
+
+        /// <summary>
         /// The URL of the event's thumbnail image.
         /// </summary>
         [StringLength(2000)]

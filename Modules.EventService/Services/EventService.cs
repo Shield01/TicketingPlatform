@@ -460,6 +460,7 @@ namespace Modules.EventService.Services
                     : string.Empty,
                 TicketTiers = ticketTiers,
                 MinimumPrice = @event.MinimumPrice,
+                MinimumPriceCurrency = @event.MinimumPriceCurrency,
                 ImageUrl = @event.ImageUrl
             };
         }
@@ -491,6 +492,7 @@ namespace Modules.EventService.Services
                 IsUpcoming = isUpcoming,
                 DaysUntilEvent = daysUntilEvent,
                 MinimumPrice = @event.MinimumPrice,
+                MinimumPriceCurrency = @event.MinimumPriceCurrency,
                 ImageUrl = @event.ImageUrl
             };
         }
