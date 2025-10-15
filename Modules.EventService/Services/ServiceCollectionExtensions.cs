@@ -41,6 +41,7 @@ namespace Modules.EventService.Services
             // Register services
             services.AddScoped<IEventService, EventService>();
             services.AddScoped<Shared.Kernel.Interfaces.IEventInfoService, EventInfoService>();
+            services.AddScoped<Shared.Kernel.Interfaces.IEventMinimumPriceService, EventMinimumPriceService>();
 
             return services;
         }

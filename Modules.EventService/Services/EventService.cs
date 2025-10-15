@@ -80,7 +80,8 @@ namespace Modules.EventService.Services
                     IsPublic = request.IsPublic,
                     IsPublished = isPublished,
                     Status = status,
-                    OrganizerId = organizerId
+                    OrganizerId = organizerId,
+                    ImageUrl = request.ImageUrl
                 };
 
                 // Validate business rules
@@ -287,6 +288,7 @@ namespace Modules.EventService.Services
                 existingEvent.Category = request.Category;
                 existingEvent.IsPublic = request.IsPublic;
                 existingEvent.Status = request.Status;
+                existingEvent.ImageUrl = request.ImageUrl;
                 existingEvent.UpdatedAt = DateTime.UtcNow;
 
                 // Validate business rules
@@ -456,7 +458,9 @@ namespace Modules.EventService.Services
                 OrganizerName = @event.Organizer != null 
                     ? $"{@event.Organizer.FirstName} {@event.Organizer.LastName}".Trim()
                     : string.Empty,
-                TicketTiers = ticketTiers
+                TicketTiers = ticketTiers,
+                MinimumPrice = @event.MinimumPrice,
+                ImageUrl = @event.ImageUrl
             };
         }
 
@@ -485,7 +489,9 @@ namespace Modules.EventService.Services
                     : string.Empty,
                 CreatedAt = @event.CreatedAt,
                 IsUpcoming = isUpcoming,
-                DaysUntilEvent = daysUntilEvent
+                DaysUntilEvent = daysUntilEvent,
+                MinimumPrice = @event.MinimumPrice,
+                ImageUrl = @event.ImageUrl
             };
         }
 
@@ -649,6 +655,7 @@ namespace Modules.EventService.Services
             @event.Category = request.Category;
             @event.IsPublic = request.IsPublic;
             @event.Status = request.Status;
+            @event.ImageUrl = request.ImageUrl;
             @event.UpdatedAt = DateTime.UtcNow;
 
             // Validate the updated event

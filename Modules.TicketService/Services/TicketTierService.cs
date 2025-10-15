@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Modules.TicketService.DTOs;
 using Modules.TicketService.Models;
 using Modules.TicketService.Repositories;
+using Shared.Kernel.Interfaces;
 
 namespace Modules.TicketService.Services
 {
@@ -11,16 +12,22 @@ namespace Modules.TicketService.Services
     public class TicketTierService : ITicketTierService
     {
         private readonly ITicketTierRepository _ticketTierRepository;
+        private readonly IEventMinimumPriceService _eventMinimumPriceService;
         private readonly ILogger<TicketTierService> _logger;
 
         /// <summary>
         /// Initializes a new instance of the TicketTierService class.
         /// </summary>
         /// <param name="ticketTierRepository">The ticket tier repository.</param>
+        /// <param name="eventMinimumPriceService">The event minimum price service.</param>
         /// <param name="logger">The logger.</param>
-        public TicketTierService(ITicketTierRepository ticketTierRepository, ILogger<TicketTierService> logger)
+        public TicketTierService(
+            ITicketTierRepository ticketTierRepository, 
+            IEventMinimumPriceService eventMinimumPriceService,
+            ILogger<TicketTierService> logger)
         {
             _ticketTierRepository = ticketTierRepository;
+            _eventMinimumPriceService = eventMinimumPriceService;
             _logger = logger;
         }
 
@@ -74,6 +81,22 @@ namespace Modules.TicketService.Services
                 
                 _logger.LogInformation("Successfully created ticket tier {TierId} for event {EventId}", 
                     createdTier.Id, eventId);
+
+                // Update event minimum price if this tier is available and cheaper
+                if (createdTier.IsAvailable)
+                {
+                    try
+                    {
+                        await _eventMinimumPriceService.UpdateMinimumPriceIfLowerAsync(eventId, createdTier.Price);
+                        _logger.LogDebug("Updated minimum price for event {EventId} after creating tier {TierId}", 
+                            eventId, createdTier.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to update minimum price for event {EventId}, but tier was created successfully", eventId);
+                        // Don't throw - tier creation succeeded, minimum price update is secondary
+                    }
+                }
 
                 return MapToTicketTierResponse(createdTier);
             }
@@ -141,6 +164,19 @@ namespace Modules.TicketService.Services
                 
                 _logger.LogInformation("Successfully updated ticket tier {TierId}", tierId);
 
+                // Recalculate event minimum price as tier details changed
+                try
+                {
+                    await _eventMinimumPriceService.RecalculateAndUpdateMinimumPriceAsync(existingTier.EventId);
+                    _logger.LogDebug("Recalculated minimum price for event {EventId} after updating tier {TierId}", 
+                        existingTier.EventId, tierId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to recalculate minimum price for event {EventId}, but tier was updated successfully", existingTier.EventId);
+                    // Don't throw - tier update succeeded, minimum price update is secondary
+                }
+
                 return MapToTicketTierResponse(updatedTier);
             }
             catch (Exception ex)
@@ -185,11 +221,31 @@ namespace Modules.TicketService.Services
 
             try
             {
+                // Get the tier before deletion to know which event to update
+                var tier = await _ticketTierRepository.GetTicketTierByIdAsync(tierId);
+                Guid? eventId = tier?.EventId;
+
                 var result = await _ticketTierRepository.DeleteTicketTierAsync(tierId);
                 
                 if (result)
                 {
                     _logger.LogInformation("Successfully deleted ticket tier {TierId}", tierId);
+
+                    // Recalculate event minimum price after deletion
+                    if (eventId.HasValue)
+                    {
+                        try
+                        {
+                            await _eventMinimumPriceService.RecalculateAndUpdateMinimumPriceAsync(eventId.Value);
+                            _logger.LogDebug("Recalculated minimum price for event {EventId} after deleting tier {TierId}", 
+                                eventId.Value, tierId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to recalculate minimum price for event {EventId}, but tier was deleted successfully", eventId.Value);
+                            // Don't throw - tier deletion succeeded, minimum price update is secondary
+                        }
+                    }
                 }
                 else
                 {

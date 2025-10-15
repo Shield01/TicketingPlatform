@@ -17,6 +17,7 @@ namespace Modules.TicketService.Services
         private readonly IEmailService _emailService;
         private readonly IUserInfoService _userInfoService;
         private readonly IEventInfoService _eventInfoService;
+        private readonly IEventMinimumPriceService _eventMinimumPriceService;
         private readonly ILogger<TicketIssueService> _logger;
 
         /// <summary>
@@ -27,14 +28,23 @@ namespace Modules.TicketService.Services
         /// <param name="emailService">The email service.</param>
         /// <param name="userInfoService">The user info service.</param>
         /// <param name="eventInfoService">The event info service.</param>
+        /// <param name="eventMinimumPriceService">The event minimum price service.</param>
         /// <param name="logger">The logger instance.</param>
-        public TicketIssueService(ITicketRepository ticketRepository, IQRCodeService qrCodeService, IEmailService emailService, IUserInfoService userInfoService, IEventInfoService eventInfoService, ILogger<TicketIssueService> logger)
+        public TicketIssueService(
+            ITicketRepository ticketRepository, 
+            IQRCodeService qrCodeService, 
+            IEmailService emailService, 
+            IUserInfoService userInfoService, 
+            IEventInfoService eventInfoService, 
+            IEventMinimumPriceService eventMinimumPriceService,
+            ILogger<TicketIssueService> logger)
         {
             _ticketRepository = ticketRepository;
             _qrCodeService = qrCodeService;
             _emailService = emailService;
             _userInfoService = userInfoService;
             _eventInfoService = eventInfoService;
+            _eventMinimumPriceService = eventMinimumPriceService;
             _logger = logger;
         }
 
@@ -96,6 +106,26 @@ namespace Modules.TicketService.Services
 
                 // Update ticket tier sold quantity
                 await _ticketRepository.UpdateTicketTierSoldQuantityAsync(request.TicketTierId, request.Quantity);
+
+                // Check if tier is now sold out and recalculate minimum price
+                var updatedTicketTier = await _ticketRepository.GetTicketTierAsync(request.TicketTierId);
+                if (updatedTicketTier != null && updatedTicketTier.SoldQuantity >= updatedTicketTier.MaxQuantity)
+                {
+                    _logger.LogInformation("Ticket tier {TierId} is now sold out, recalculating minimum price for event {EventId}", 
+                        request.TicketTierId, request.EventId);
+                    
+                    try
+                    {
+                        await _eventMinimumPriceService.RecalculateAndUpdateMinimumPriceAsync(request.EventId);
+                        _logger.LogDebug("Recalculated minimum price for event {EventId} after tier {TierId} sold out", 
+                            request.EventId, request.TicketTierId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to recalculate minimum price for event {EventId}, but tickets were issued successfully", request.EventId);
+                        // Don't throw - ticket issuance succeeded, minimum price update is secondary
+                    }
+                }
 
                 _logger.LogInformation("Successfully issued {Count} tickets for user {UserId}, payment {PaymentId}", 
                     request.Quantity, request.UserId, request.PaymentId);

@@ -61,5 +61,12 @@ namespace Modules.EventService.DTOs
         /// <example>Published</example>
         [StringLength(50)]
         public string Status { get; set; } = "Draft";
+
+        /// <summary>
+        /// The URL of the event's thumbnail image.
+        /// </summary>
+        /// <example>https://example.com/images/event-thumbnail.jpg</example>
+        [StringLength(2000)]
+        public string? ImageUrl { get; set; }
     }
 } 

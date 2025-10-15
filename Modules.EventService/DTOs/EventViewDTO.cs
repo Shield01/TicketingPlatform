@@ -59,5 +59,15 @@ namespace Modules.EventService.DTOs
         /// The number of days until the event starts.
         /// </summary>
         public int DaysUntilEvent { get; set; }
+
+        /// <summary>
+        /// The minimum ticket price for the event (if available).
+        /// </summary>
+        public decimal? MinimumPrice { get; set; }
+
+        /// <summary>
+        /// The URL of the event's thumbnail image.
+        /// </summary>
+        public string? ImageUrl { get; set; }
     }
 } 
