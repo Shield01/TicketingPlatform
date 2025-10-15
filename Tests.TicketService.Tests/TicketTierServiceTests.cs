@@ -29,8 +29,8 @@ namespace Tests.TicketService.Tests
             _mockLogger = new Mock<ILogger<TicketTierService>>();
             
             // Setup default behavior - minimum price service succeeds
-            _mockEventMinimumPriceService.Setup(x => x.UpdateMinimumPriceIfLowerAsync(It.IsAny<Guid>(), It.IsAny<decimal>()))
-                .ReturnsAsync((Guid eventId, decimal price) => price);
+            _mockEventMinimumPriceService.Setup(x => x.UpdateMinimumPriceIfLowerAsync(It.IsAny<Guid>(), It.IsAny<decimal>(), It.IsAny<string>()))
+                .ReturnsAsync((Guid eventId, decimal price, string currency) => price);
             _mockEventMinimumPriceService.Setup(x => x.RecalculateAndUpdateMinimumPriceAsync(It.IsAny<Guid>()))
                 .ReturnsAsync((Guid eventId) => (decimal?)100m);
             

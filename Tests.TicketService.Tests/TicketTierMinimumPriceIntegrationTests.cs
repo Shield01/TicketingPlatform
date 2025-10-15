@@ -66,7 +66,7 @@ namespace Tests.TicketService.Tests
                 .ReturnsAsync(false);
             _mockTicketTierRepository.Setup(x => x.CreateTicketTierAsync(It.IsAny<TicketTier>()))
                 .ReturnsAsync(createdTier);
-            _mockEventMinimumPriceService.Setup(x => x.UpdateMinimumPriceIfLowerAsync(eventId, request.Price))
+            _mockEventMinimumPriceService.Setup(x => x.UpdateMinimumPriceIfLowerAsync(eventId, request.Price, request.Currency))
                 .ReturnsAsync(request.Price);
 
             // Act
@@ -76,7 +76,7 @@ namespace Tests.TicketService.Tests
             Assert.NotNull(result);
             Assert.Equal(createdTier.Id, result.Id);
             _mockEventMinimumPriceService.Verify(
-                x => x.UpdateMinimumPriceIfLowerAsync(eventId, request.Price), 
+                x => x.UpdateMinimumPriceIfLowerAsync(eventId, request.Price, request.Currency), 
                 Times.Once);
         }
 
@@ -123,7 +123,7 @@ namespace Tests.TicketService.Tests
             Assert.NotNull(result);
             Assert.Equal(createdTier.Id, result.Id);
             _mockEventMinimumPriceService.Verify(
-                x => x.UpdateMinimumPriceIfLowerAsync(It.IsAny<Guid>(), It.IsAny<decimal>()), 
+                x => x.UpdateMinimumPriceIfLowerAsync(It.IsAny<Guid>(), It.IsAny<decimal>(), It.IsAny<string>()), 
                 Times.Never);
         }
 
@@ -247,7 +247,7 @@ namespace Tests.TicketService.Tests
                 .ReturnsAsync(false);
             _mockTicketTierRepository.Setup(x => x.CreateTicketTierAsync(It.IsAny<TicketTier>()))
                 .ReturnsAsync(createdTier);
-            _mockEventMinimumPriceService.Setup(x => x.UpdateMinimumPriceIfLowerAsync(eventId, request.Price))
+            _mockEventMinimumPriceService.Setup(x => x.UpdateMinimumPriceIfLowerAsync(eventId, request.Price, request.Currency))
                 .ThrowsAsync(new Exception("Database error"));
 
             // Act

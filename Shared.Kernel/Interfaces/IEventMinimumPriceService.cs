@@ -24,8 +24,9 @@ namespace Shared.Kernel.Interfaces
         /// </summary>
         /// <param name="eventId">The unique identifier of the event.</param>
         /// <param name="newTierPrice">The price of the newly created tier.</param>
+        /// <param name="currency">The currency of the new tier.</param>
         /// <returns>The updated minimum price.</returns>
-        Task<decimal?> UpdateMinimumPriceIfLowerAsync(Guid eventId, decimal newTierPrice);
+        Task<decimal?> UpdateMinimumPriceIfLowerAsync(Guid eventId, decimal newTierPrice, string currency);
     }
 }
 

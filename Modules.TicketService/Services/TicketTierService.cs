@@ -87,7 +87,7 @@ namespace Modules.TicketService.Services
                 {
                     try
                     {
-                        await _eventMinimumPriceService.UpdateMinimumPriceIfLowerAsync(eventId, createdTier.Price);
+                        await _eventMinimumPriceService.UpdateMinimumPriceIfLowerAsync(eventId, createdTier.Price, createdTier.Currency);
                         _logger.LogDebug("Updated minimum price for event {EventId} after creating tier {TierId}", 
                             eventId, createdTier.Id);
                     }

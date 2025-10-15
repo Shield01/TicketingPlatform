@@ -65,23 +65,30 @@ namespace Modules.EventService.Services
 
                 // Find the minimum price among available tiers
                 decimal? newMinimumPrice = null;
+                string? newMinimumPriceCurrency = null;
+                
                 if (availableTiers.Any())
                 {
-                    newMinimumPrice = availableTiers.Min(t => t.Price);
-                    _logger.LogInformation("Found minimum price {MinPrice} for event {EventId} from {TierCount} available tiers", 
-                        newMinimumPrice, eventId, availableTiers.Count);
+                    var cheapestTier = availableTiers.OrderBy(t => t.Price).First();
+                    newMinimumPrice = cheapestTier.Price;
+                    newMinimumPriceCurrency = cheapestTier.Currency;
+                    
+                    _logger.LogInformation("Found minimum price {MinPrice} {Currency} for event {EventId} from {TierCount} available tiers", 
+                        newMinimumPrice, newMinimumPriceCurrency, eventId, availableTiers.Count);
                 }
                 else
                 {
                     _logger.LogInformation("No available ticket tiers found for event {EventId}, setting minimum price to null", eventId);
                 }
 
-                // Update the event's minimum price
+                // Update the event's minimum price and currency
                 @event.MinimumPrice = newMinimumPrice;
+                @event.MinimumPriceCurrency = newMinimumPriceCurrency;
                 @event.UpdatedAt = DateTime.UtcNow;
                 await _eventRepository.UpdateEventAsync(@event);
 
-                _logger.LogInformation("Successfully updated minimum price for event {EventId} to {MinPrice}", eventId, newMinimumPrice);
+                _logger.LogInformation("Successfully updated minimum price for event {EventId} to {MinPrice} {Currency}", 
+                    eventId, newMinimumPrice, newMinimumPriceCurrency ?? "N/A");
                 
                 return newMinimumPrice;
             }
@@ -99,13 +106,14 @@ namespace Modules.EventService.Services
         /// </summary>
         /// <param name="eventId">The unique identifier of the event.</param>
         /// <param name="newTierPrice">The price of the newly created tier.</param>
+        /// <param name="currency">The currency of the new tier.</param>
         /// <returns>The updated minimum price.</returns>
-        public async Task<decimal?> UpdateMinimumPriceIfLowerAsync(Guid eventId, decimal newTierPrice)
+        public async Task<decimal?> UpdateMinimumPriceIfLowerAsync(Guid eventId, decimal newTierPrice, string currency)
         {
             try
             {
-                _logger.LogDebug("Checking if new tier price {Price} is lower than current minimum for event {EventId}", 
-                    newTierPrice, eventId);
+                _logger.LogDebug("Checking if new tier price {Price} {Currency} is lower than current minimum for event {EventId}", 
+                    newTierPrice, currency, eventId);
 
                 // Get the event
                 var @event = await _eventRepository.GetEventByIdAsync(eventId);
@@ -122,35 +130,38 @@ namespace Modules.EventService.Services
                 {
                     // No existing minimum, set it to the new tier price
                     shouldUpdate = true;
-                    _logger.LogInformation("Event {EventId} has no minimum price, setting to {Price}", eventId, newTierPrice);
+                    _logger.LogInformation("Event {EventId} has no minimum price, setting to {Price} {Currency}", 
+                        eventId, newTierPrice, currency);
                 }
                 else if (newTierPrice < @event.MinimumPrice.Value)
                 {
                     // New tier is cheaper, update
                     shouldUpdate = true;
-                    _logger.LogInformation("New tier price {NewPrice} is lower than current minimum {OldPrice} for event {EventId}", 
-                        newTierPrice, @event.MinimumPrice.Value, eventId);
+                    _logger.LogInformation("New tier price {NewPrice} {NewCurrency} is lower than current minimum {OldPrice} {OldCurrency} for event {EventId}", 
+                        newTierPrice, currency, @event.MinimumPrice.Value, @event.MinimumPriceCurrency ?? "N/A", eventId);
                 }
                 else
                 {
-                    _logger.LogDebug("New tier price {NewPrice} is not lower than current minimum {OldPrice} for event {EventId}, no update needed", 
-                        newTierPrice, @event.MinimumPrice.Value, eventId);
+                    _logger.LogDebug("New tier price {NewPrice} {NewCurrency} is not lower than current minimum {OldPrice} {OldCurrency} for event {EventId}, no update needed", 
+                        newTierPrice, currency, @event.MinimumPrice.Value, @event.MinimumPriceCurrency ?? "N/A", eventId);
                 }
 
                 if (shouldUpdate)
                 {
                     @event.MinimumPrice = newTierPrice;
+                    @event.MinimumPriceCurrency = currency;
                     @event.UpdatedAt = DateTime.UtcNow;
                     await _eventRepository.UpdateEventAsync(@event);
-                    _logger.LogInformation("Updated minimum price for event {EventId} to {Price}", eventId, newTierPrice);
+                    _logger.LogInformation("Updated minimum price for event {EventId} to {Price} {Currency}", 
+                        eventId, newTierPrice, currency);
                 }
 
                 return @event.MinimumPrice;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating minimum price for event {EventId} with new tier price {Price}", 
-                    eventId, newTierPrice);
+                _logger.LogError(ex, "Error updating minimum price for event {EventId} with new tier price {Price} {Currency}", 
+                    eventId, newTierPrice, currency);
                 throw;
             }
         }
