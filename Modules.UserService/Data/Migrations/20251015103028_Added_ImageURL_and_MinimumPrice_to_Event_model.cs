@@ -2,10 +2,10 @@
 
 #nullable disable
 
-namespace Modules.TicketService.Data.Migrations
+namespace Modules.UserService.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class Added_ImageURL_to_Event_model : Migration
+    public partial class Added_ImageURL_and_MinimumPrice_to_Event_model : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

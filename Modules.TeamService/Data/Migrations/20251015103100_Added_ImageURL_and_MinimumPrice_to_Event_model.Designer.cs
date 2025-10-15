@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Modules.TeamService.Data.Migrations
 {
     [DbContext(typeof(TeamServiceDbContext))]
-    [Migration("20251012123054_Added_ImageURL_to_Event_model")]
-    partial class Added_ImageURL_to_Event_model
+    [Migration("20251015103100_Added_ImageURL_and_MinimumPrice_to_Event_model")]
+    partial class Added_ImageURL_and_MinimumPrice_to_Event_model
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

@@ -4,6 +4,7 @@ using Modules.TicketService.DTOs;
 using Modules.TicketService.Models;
 using Modules.TicketService.Repositories;
 using Modules.TicketService.Services;
+using Shared.Kernel.Interfaces;
 using System.ComponentModel.DataAnnotations;
 using Xunit;
 
@@ -17,8 +18,9 @@ namespace Tests.TicketService.Tests
         private readonly Mock<ITicketRepository> _mockTicketRepository;
         private readonly Mock<IQRCodeService> _mockQRCodeService;
         private readonly Mock<IEmailService> _mockEmailService;
-        private readonly Mock<Shared.Kernel.Interfaces.IUserInfoService> _mockUserInfoService;
-        private readonly Mock<Shared.Kernel.Interfaces.IEventInfoService> _mockEventInfoService;
+        private readonly Mock<IUserInfoService> _mockUserInfoService;
+        private readonly Mock<IEventInfoService> _mockEventInfoService;
+        private readonly Mock<IEventMinimumPriceService> _mockEventMinimumPriceService;
         private readonly Mock<ILogger<TicketIssueService>> _mockLogger;
         private readonly TicketIssueService _service;
 
@@ -27,10 +29,23 @@ namespace Tests.TicketService.Tests
             _mockTicketRepository = new Mock<ITicketRepository>();
             _mockQRCodeService = new Mock<IQRCodeService>();
             _mockEmailService = new Mock<IEmailService>();
-            _mockUserInfoService = new Mock<Shared.Kernel.Interfaces.IUserInfoService>();
-            _mockEventInfoService = new Mock<Shared.Kernel.Interfaces.IEventInfoService>();
+            _mockUserInfoService = new Mock<IUserInfoService>();
+            _mockEventInfoService = new Mock<IEventInfoService>();
+            _mockEventMinimumPriceService = new Mock<IEventMinimumPriceService>();
             _mockLogger = new Mock<ILogger<TicketIssueService>>();
-            _service = new TicketIssueService(_mockTicketRepository.Object, _mockQRCodeService.Object, _mockEmailService.Object, _mockUserInfoService.Object, _mockEventInfoService.Object, _mockLogger.Object);
+            
+            // Setup default behavior for minimum price service
+            _mockEventMinimumPriceService.Setup(x => x.RecalculateAndUpdateMinimumPriceAsync(It.IsAny<Guid>()))
+                .ReturnsAsync((Guid eventId) => (decimal?)100m);
+            
+            _service = new TicketIssueService(
+                _mockTicketRepository.Object, 
+                _mockQRCodeService.Object, 
+                _mockEmailService.Object, 
+                _mockUserInfoService.Object, 
+                _mockEventInfoService.Object, 
+                _mockEventMinimumPriceService.Object,
+                _mockLogger.Object);
         }
 
         [Fact]

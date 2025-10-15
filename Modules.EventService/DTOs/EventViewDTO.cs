@@ -41,21 +41,6 @@ namespace Modules.EventService.DTOs
         public string? Category { get; set; }
 
         /// <summary>
-        /// The URL of the event's thumbnail image.
-        /// </summary>
-        public string? ImageURL { get; set; }
-
-        /// <summary>
-        /// The minimum ticket price available for this event.
-        /// </summary>
-        public decimal? MinimumTicketPrice { get; set; }
-
-        /// <summary>
-        /// The currency of the minimum ticket price.
-        /// </summary>
-        public string? MinimumTicketPriceCurrency { get; set; }
-
-        /// <summary>
         /// The name of the event organizer.
         /// </summary>
         public string OrganizerName { get; set; } = string.Empty;
@@ -74,5 +59,15 @@ namespace Modules.EventService.DTOs
         /// The number of days until the event starts.
         /// </summary>
         public int DaysUntilEvent { get; set; }
+
+        /// <summary>
+        /// The minimum ticket price for the event (if available).
+        /// </summary>
+        public decimal? MinimumPrice { get; set; }
+
+        /// <summary>
+        /// The URL of the event's thumbnail image.
+        /// </summary>
+        public string? ImageUrl { get; set; }
     }
 } 

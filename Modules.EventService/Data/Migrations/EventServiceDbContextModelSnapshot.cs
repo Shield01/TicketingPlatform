@@ -45,9 +45,9 @@ namespace Modules.EventService.Data.Migrations
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("ImageURL")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -68,6 +68,9 @@ namespace Modules.EventService.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<decimal?>("MinimumPrice")
+                        .HasColumnType("numeric");
 
                     b.Property<Guid>("OrganizerId")
                         .HasColumnType("uuid");

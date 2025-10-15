@@ -54,12 +54,6 @@ namespace Modules.EventService.Models
         public string? Category { get; set; }
 
         /// <summary>
-        /// The URL of the event's thumbnail image.
-        /// </summary>
-        [StringLength(1000)]
-        public string? ImageURL { get; set; }
-
-        /// <summary>
         /// Whether the event is public or private.
         /// </summary>
         public bool IsPublic { get; set; } = true;
@@ -101,6 +95,18 @@ namespace Modules.EventService.Models
         /// Indicates whether the event is active.
         /// </summary>
         public bool IsActive { get; set; } = true;
+
+        /// <summary>
+        /// The minimum ticket price for the event (cached from ticket tiers for performance).
+        /// This value is automatically updated when ticket tiers are created, updated, or sold out.
+        /// </summary>
+        public decimal? MinimumPrice { get; set; }
+
+        /// <summary>
+        /// The URL of the event's thumbnail image.
+        /// </summary>
+        [StringLength(2000)]
+        public string? ImageUrl { get; set; }
 
         /// <summary>
         /// Navigation property for the organizer of the event.

@@ -50,13 +50,6 @@ namespace Modules.EventService.DTOs
         public string? Category { get; set; }
 
         /// <summary>
-        /// The updated URL of the event's thumbnail image.
-        /// </summary>
-        /// <example>https://example.com/images/updated-event-thumbnail.jpg</example>
-        [StringLength(1000)]
-        public string? ImageURL { get; set; }
-
-        /// <summary>
         /// Whether the event is public or private.
         /// </summary>
         /// <example>true</example>
@@ -68,5 +61,12 @@ namespace Modules.EventService.DTOs
         /// <example>Published</example>
         [StringLength(50)]
         public string Status { get; set; } = "Draft";
+
+        /// <summary>
+        /// The URL of the event's thumbnail image.
+        /// </summary>
+        /// <example>https://example.com/images/event-thumbnail.jpg</example>
+        [StringLength(2000)]
+        public string? ImageUrl { get; set; }
     }
 } 

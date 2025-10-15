@@ -8,6 +8,7 @@ using Modules.TicketService.DTOs;
 using Modules.TicketService.Models;
 using Modules.TicketService.Repositories;
 using Modules.TicketService.Services;
+using Shared.Kernel.Interfaces;
 
 namespace Tests.TicketService.Tests
 {
@@ -17,14 +18,23 @@ namespace Tests.TicketService.Tests
     public class TicketTierServiceTests
     {
         private readonly Mock<ITicketTierRepository> _mockRepository;
+        private readonly Mock<IEventMinimumPriceService> _mockEventMinimumPriceService;
         private readonly Mock<ILogger<TicketTierService>> _mockLogger;
         private readonly TicketTierService _service;
 
         public TicketTierServiceTests()
         {
             _mockRepository = new Mock<ITicketTierRepository>();
+            _mockEventMinimumPriceService = new Mock<IEventMinimumPriceService>();
             _mockLogger = new Mock<ILogger<TicketTierService>>();
-            _service = new TicketTierService(_mockRepository.Object, _mockLogger.Object);
+            
+            // Setup default behavior - minimum price service succeeds
+            _mockEventMinimumPriceService.Setup(x => x.UpdateMinimumPriceIfLowerAsync(It.IsAny<Guid>(), It.IsAny<decimal>()))
+                .ReturnsAsync((Guid eventId, decimal price) => price);
+            _mockEventMinimumPriceService.Setup(x => x.RecalculateAndUpdateMinimumPriceAsync(It.IsAny<Guid>()))
+                .ReturnsAsync((Guid eventId) => (decimal?)100m);
+            
+            _service = new TicketTierService(_mockRepository.Object, _mockEventMinimumPriceService.Object, _mockLogger.Object);
         }
 
         #region CreateTicketTierAsync Tests

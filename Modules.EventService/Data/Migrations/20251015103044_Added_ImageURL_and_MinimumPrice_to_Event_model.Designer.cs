@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Modules.EventService.Data.Migrations
 {
     [DbContext(typeof(EventServiceDbContext))]
-    [Migration("20251012123036_Added_ImageURL_to_Event_model")]
-    partial class Added_ImageURL_to_Event_model
+    [Migration("20251015103044_Added_ImageURL_and_MinimumPrice_to_Event_model")]
+    partial class Added_ImageURL_and_MinimumPrice_to_Event_model
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -48,9 +48,9 @@ namespace Modules.EventService.Data.Migrations
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("ImageURL")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -71,6 +71,9 @@ namespace Modules.EventService.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<decimal?>("MinimumPrice")
+                        .HasColumnType("numeric");
 
                     b.Property<Guid>("OrganizerId")
                         .HasColumnType("uuid");

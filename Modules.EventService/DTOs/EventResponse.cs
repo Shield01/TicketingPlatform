@@ -46,11 +46,6 @@ namespace Modules.EventService.DTOs
         public string? Category { get; set; }
 
         /// <summary>
-        /// The URL of the event's thumbnail image.
-        /// </summary>
-        public string? ImageURL { get; set; }
-
-        /// <summary>
         /// Whether the event is public or private.
         /// </summary>
         public bool IsPublic { get; set; }
@@ -84,5 +79,15 @@ namespace Modules.EventService.DTOs
         /// The ticket tiers available for this event.
         /// </summary>
         public IEnumerable<EventTicketTierResponse> TicketTiers { get; set; } = new List<EventTicketTierResponse>();
+
+        /// <summary>
+        /// The minimum ticket price for the event (if available).
+        /// </summary>
+        public decimal? MinimumPrice { get; set; }
+
+        /// <summary>
+        /// The URL of the event's thumbnail image.
+        /// </summary>
+        public string? ImageUrl { get; set; }
     }
 } 
