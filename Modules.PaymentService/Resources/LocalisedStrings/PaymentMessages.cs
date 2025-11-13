@@ -33,7 +33,7 @@ namespace Modules.PaymentService.Resources.LocalisedStrings
         public const string NoTransactionsFound = "No transactions found.";
 
         // Payment Gateway Messages
-        public const string PaystackIntegrationError = "Paystack integration error occurred.";
+        public const string PayazaIntegrationError = "Payaza integration error occurred.";
         public const string FlutterwaveIntegrationError = "Flutterwave integration error occurred.";
         public const string GatewayTimeout = "Payment gateway timeout.";
         public const string GatewayUnavailable = "Payment gateway unavailable.";
