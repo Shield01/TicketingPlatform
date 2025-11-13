@@ -53,7 +53,7 @@ sequenceDiagram
 - Prevents duplicate ticket creation
 
 #### POST /api/payments/webhook
-- Receives webhook from payment gateway (Paystack/Flutterwave)
+- Receives webhook from payment gateway (Payaza/Flutterwave)
 - Validates payment and triggers ticket issuance
 
 ## Current Placeholder Implementation
@@ -81,7 +81,7 @@ public async Task<bool> ValidatePaymentForTicketIssuanceAsync(Guid paymentId)
 ### Phase 1: PaymentService Enhancement
 1. Implement real payment models and database schema
 2. Create payment status tracking and validation logic
-3. Add payment gateway integration (Paystack/Flutterwave)
+3. Add payment gateway integration (Payaza/Flutterwave)
 4. Implement payment webhook handling
 
 ### Phase 2: Cross-Service Integration

@@ -36,7 +36,7 @@ namespace Modules.PaymentService.Controllers
         [Authorize(Policy = "AuthenticatedUser")]
         [SwaggerOperation(
             Summary = "Initiate a payment transaction",
-            Description = "Initiates a payment transaction with Paystack or Flutterwave and returns a payment URL for the user to complete the payment.",
+            Description = "Initiates a payment transaction with Payaza or Flutterwave and returns a payment URL for the user to complete the payment.",
             OperationId = "InitiatePayment",
             Tags = new[] { "Payments" }
         )]
@@ -51,13 +51,13 @@ namespace Modules.PaymentService.Controllers
             var response = new PaymentInitiationResponse
             {
                 TransactionId = Guid.NewGuid(),
-                PaymentUrl = "https://checkout.paystack.com/1234567890",
+                PaymentUrl = "https://checkout.Payaza.com/1234567890",
                 Reference = "TXN_" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"),
                 Amount = request.Amount,
                 Currency = request.Currency,
                 Status = "Pending",
                 ExpiresAt = DateTime.UtcNow.AddMinutes(30),
-                Gateway = "Paystack"
+                Gateway = "Payaza"
             };
 
             return Ok(response);
@@ -74,7 +74,7 @@ namespace Modules.PaymentService.Controllers
         [HttpPost("webhook")]
         [SwaggerOperation(
             Summary = "Handle payment webhook",
-            Description = "Processes webhook notifications from payment gateways (Paystack/Flutterwave) to update payment status.",
+            Description = "Processes webhook notifications from payment gateways (Payaza/Flutterwave) to update payment status.",
             OperationId = "ProcessPaymentWebhook",
             Tags = new[] { "Payments" }
         )]
@@ -134,7 +134,7 @@ namespace Modules.PaymentService.Controllers
                     Amount = 150.00m,
                     Currency = "NGN",
                     Status = "Completed",
-                    Gateway = "Paystack",
+                    Gateway = "Payaza",
                     Reference = "TXN_20240115120000",
                     CreatedAt = DateTime.UtcNow.AddDays(-5),
                     CompletedAt = DateTime.UtcNow.AddDays(-5).AddMinutes(5)

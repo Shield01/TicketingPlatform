@@ -138,8 +138,8 @@ private-keys/
 # Payment Gateway & Integration Files
 #######################################
 
-# Paystack/Flutterwave config
-paystack-config.json
+# Payaza/Flutterwave config
+Payaza-config.json
 flutterwave-config.json
 payment-secrets/
 

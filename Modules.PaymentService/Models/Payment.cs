@@ -38,7 +38,7 @@ namespace Modules.PaymentService.Models
         public string? TransactionId { get; set; }
 
         /// <summary>
-        /// The payment gateway used (Paystack, Flutterwave, etc.).
+        /// The payment gateway used (Payaza, Flutterwave, etc.).
         /// </summary>
         [Required]
         [StringLength(50)]

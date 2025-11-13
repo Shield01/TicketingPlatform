@@ -53,7 +53,7 @@ alwaysApply: true
 ### 4. Payments Module
 
 #### Features
-- Integration with Paystack/Flutterwave
+- Integration with Payaza/Flutterwave
 - Initiate payments
 - Payment confirmation via webhook
 - Store transactions in database
@@ -111,7 +111,7 @@ alwaysApply: true
     Repositories/
     DTOs/
     Models/
-    Integrations/ # Paystack, Flutterwave
+    Integrations/ # Payaza, Flutterwave
     UnitTests/
     Resources/LocalisedStrings
 /Shared
@@ -135,7 +135,7 @@ docker-compose.yml (for local dev)
 - ASP.NET Core 8 / .NET 8
 - Entity Framework Core
 - PostgreSQL or SQL Server
-- Paystack / Flutterwave SDK
+- Payaza / Flutterwave SDK
 - JWT
 - xUnit for Unit Tests
 - Swagger for API docs
@@ -177,5 +177,12 @@ docker-compose.yml (for local dev)
 ## Appendix
 
 - Sample ticket schema
-- Paystack/Flutterwave webhook payloads
+- Payaza/Flutterwave webhook payloads
 - QR Code encryption method
+
+## Cross-ticket Requirements
+- Logging: redact sensitive data; include metrics for request success/failure.
+- Secrets: use env variables only, add .env.example entries.
+- Swagger: all endpoints documented with example payloads.
+- Testing: README walkthrough.
+- Security: HTTPS-only, rate-limited webhook endpoint.

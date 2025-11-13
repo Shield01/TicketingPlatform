@@ -45,11 +45,11 @@ namespace Modules.PaymentService.DTOs
         public string Currency { get; set; } = "NGN";
 
         /// <summary>
-        /// The payment gateway to use (Paystack or Flutterwave).
+        /// The payment gateway to use (Payaza or Flutterwave).
         /// </summary>
-        /// <example>Paystack</example>
+        /// <example>Payaza</example>
         [Required]
-        public string Gateway { get; set; } = "Paystack";
+        public string Gateway { get; set; } = "Payaza";
 
         /// <summary>
         /// The customer's email address.
