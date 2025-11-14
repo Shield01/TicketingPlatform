@@ -41,6 +41,11 @@ namespace Modules.PaymentService.Services
             // Register repositories and services
             services.AddScoped<Repositories.IPaymentRepository, Repositories.PaymentRepository>();
             services.AddScoped<IPaymentService, PaymentService>();
+            services.AddScoped<IWebhookValidationService, WebhookValidationService>();
+            services.AddScoped<IWebhookProcessingService, WebhookProcessingService>();
+
+            // Register background services for TSQ (Transaction Status Query)
+            services.AddHostedService<TransactionStatusQueryService>();
 
             return services;
         }

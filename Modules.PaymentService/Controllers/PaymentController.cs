@@ -20,11 +20,19 @@ namespace Modules.PaymentService.Controllers
     {
         private readonly ILogger<PaymentController> _logger;
         private readonly IPaymentService _paymentService;
+        private readonly IWebhookValidationService _webhookValidationService;
+        private readonly IWebhookProcessingService _webhookProcessingService;
 
-        public PaymentController(ILogger<PaymentController> logger, IPaymentService paymentService)
+        public PaymentController(
+            ILogger<PaymentController> logger, 
+            IPaymentService paymentService,
+            IWebhookValidationService webhookValidationService,
+            IWebhookProcessingService webhookProcessingService)
         {
             _logger = logger;
             _paymentService = paymentService;
+            _webhookValidationService = webhookValidationService;
+            _webhookProcessingService = webhookProcessingService;
         }
 
         /// <summary>
@@ -130,35 +138,143 @@ namespace Modules.PaymentService.Controllers
         }
 
         /// <summary>
-        /// Handles payment webhook notifications from payment gateways.
+        /// Handles payment webhook notifications from PayAza payment gateway.
+        /// This endpoint validates HMAC SHA512 signatures, handles idempotency, and updates payment transaction status.
         /// </summary>
-        /// <param name="request">The webhook payload from the payment gateway.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Webhook processing result.</returns>
-        /// <response code="200">Webhook processed successfully.</response>
-        /// <response code="400">Invalid webhook data.</response>
-        /// <response code="401">Invalid webhook signature.</response>
+        /// <response code="200">Webhook processed successfully or already processed (duplicate).</response>
+        /// <response code="400">Invalid webhook data or missing required fields.</response>
+        /// <response code="401">Invalid or missing webhook signature.</response>
         [HttpPost("webhook")]
         [AllowAnonymous] // Allow anonymous as this is called by payment gateway
         [SwaggerOperation(
-            Summary = "Handle payment webhook",
-            Description = "Processes webhook notifications from payment gateways (Payaza/Flutterwave) to update payment status.",
+            Summary = "Handle PayAza payment webhook",
+            Description = @"Processes webhook notifications from PayAza payment gateway to update payment transaction status.
+            
+**Security:** Validates webhook authenticity using HMAC SHA512 signature from x-payaza-signature header.
+
+**Idempotency:** Automatically detects and ignores duplicate webhook events based on transaction reference and event fingerprint.
+
+**Status Mapping:** Maps PayAza webhook events to internal payment statuses (COMPLETED, FAILED, PENDING, CANCELLED).
+
+**Example Webhook Events:**
+- collection.success - Payment successfully completed
+- collection.failed - Payment failed
+- transfer.completed - Payout completed
+- transfer.failed - Payout failed
+
+**Required Headers:**
+- x-payaza-signature: Base64-encoded HMAC SHA512 signature of the request body",
             OperationId = "ProcessPaymentWebhook",
             Tags = new[] { "Payments" }
         )]
-        [SwaggerResponse(200, "Webhook processed successfully")]
+        [SwaggerResponse(200, "Webhook processed successfully", typeof(WebhookProcessingResult))]
         [SwaggerResponse(400, "Invalid webhook data")]
-        [SwaggerResponse(401, "Invalid webhook signature")]
-        public async Task<IActionResult> ProcessWebhook([FromBody] PaymentWebhookRequest request)
+        [SwaggerResponse(401, "Invalid or missing webhook signature")]
+        public async Task<IActionResult> ProcessWebhook(CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("Payment webhook received for transaction {TransactionId}, status {Status}", request.TransactionId, request.Status);
-            
-            // TODO: Implement actual webhook processing logic
-            // Verify webhook signature
-            // Update payment status in database
-            // Send confirmation emails
-            // Update ticket availability
+            try
+            {
+                // Read raw request body
+                string rawPayload;
+                using (var reader = new StreamReader(Request.Body, System.Text.Encoding.UTF8, leaveOpen: true))
+                {
+                    rawPayload = await reader.ReadToEndAsync();
+                }
 
-            return Ok(new { Message = "Webhook processed successfully" });
+                if (string.IsNullOrWhiteSpace(rawPayload))
+                {
+                    _logger.LogWarning("Webhook received with empty payload");
+                    return BadRequest(new { Message = "Webhook payload is empty" });
+                }
+
+                _logger.LogInformation("Webhook received, payload length: {Length} bytes", rawPayload.Length);
+
+                // Get signature from header
+                var signature = Request.Headers["x-payaza-signature"].ToString();
+
+                if (string.IsNullOrWhiteSpace(signature))
+                {
+                    _logger.LogWarning("Webhook received without signature header");
+                    return Unauthorized(new { Message = "Missing x-payaza-signature header" });
+                }
+
+                // Validate signature using HMAC SHA512
+                if (!_webhookValidationService.ValidateSignature(rawPayload, signature))
+                {
+                    _logger.LogWarning("Webhook signature validation failed");
+                    return Unauthorized(new { Message = "Invalid webhook signature" });
+                }
+
+                _logger.LogInformation("Webhook signature validated successfully");
+
+                // Parse payload
+                PayAzaWebhookPayload? payload;
+                try
+                {
+                    payload = System.Text.Json.JsonSerializer.Deserialize<PayAzaWebhookPayload>(
+                        rawPayload, 
+                        new System.Text.Json.JsonSerializerOptions 
+                        { 
+                            PropertyNameCaseInsensitive = true 
+                        });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to parse webhook payload");
+                    return BadRequest(new { Message = "Invalid JSON payload" });
+                }
+
+                if (payload == null)
+                {
+                    _logger.LogWarning("Webhook payload deserialized to null");
+                    return BadRequest(new { Message = "Failed to parse webhook payload" });
+                }
+
+                _logger.LogInformation(
+                    "Processing webhook for transaction {TransactionReference}, event {Event}, status {Status}",
+                    payload.TransactionReference, payload.Event, payload.Status);
+
+                // Process webhook
+                var result = await _webhookProcessingService.ProcessWebhookAsync(payload, cancellationToken);
+
+                if (!result.Success)
+                {
+                    _logger.LogWarning(
+                        "Webhook processing failed for transaction {TransactionReference}: {Message}",
+                        payload.TransactionReference, result.Message);
+                    return BadRequest(result);
+                }
+
+                if (result.IsDuplicate)
+                {
+                    _logger.LogInformation(
+                        "Duplicate webhook detected for transaction {TransactionReference}",
+                        payload.TransactionReference);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "Webhook processed successfully for payment {PaymentId}, status: {Status}",
+                        result.PaymentId, result.Status);
+                }
+
+                // Always return 200 OK for processed or duplicate webhooks
+                // This prevents PayAza from retrying successfully processed webhooks
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error processing webhook");
+                
+                // Return 200 OK to prevent retries for unexpected errors
+                // The payment can be reconciled via TSQ (Transaction Status Query)
+                return Ok(new { 
+                    Success = false, 
+                    Message = "Webhook received but encountered processing error. Transaction will be reconciled via status query." 
+                });
+            }
         }
 
         /// <summary>

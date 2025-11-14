@@ -16,13 +16,21 @@ namespace Tests.PaymentService.Tests
     {
         private readonly Mock<ILogger<PaymentController>> _mockLogger;
         private readonly Mock<IPaymentService> _mockService;
+        private readonly Mock<IWebhookValidationService> _mockWebhookValidationService;
+        private readonly Mock<IWebhookProcessingService> _mockWebhookProcessingService;
         private readonly PaymentController _controller;
 
         public PaymentControllerTests()
         {
             _mockLogger = new Mock<ILogger<PaymentController>>();
             _mockService = new Mock<IPaymentService>();
-            _controller = new PaymentController(_mockLogger.Object, _mockService.Object);
+            _mockWebhookValidationService = new Mock<IWebhookValidationService>();
+            _mockWebhookProcessingService = new Mock<IWebhookProcessingService>();
+            _controller = new PaymentController(
+                _mockLogger.Object, 
+                _mockService.Object,
+                _mockWebhookValidationService.Object,
+                _mockWebhookProcessingService.Object);
         }
 
         [Fact]
