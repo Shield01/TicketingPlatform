@@ -102,6 +102,22 @@ namespace Modules.PaymentService.Models
         public bool IsActive { get; set; } = true;
 
         /// <summary>
+        /// The last webhook event ID received for this payment (for idempotency).
+        /// </summary>
+        [StringLength(100)]
+        public string? LastWebhookEventId { get; set; }
+
+        /// <summary>
+        /// The timestamp of the last webhook received for this payment.
+        /// </summary>
+        public DateTime? LastWebhookReceivedAt { get; set; }
+
+        /// <summary>
+        /// The number of webhook events received for this payment.
+        /// </summary>
+        public int WebhookCount { get; set; } = 0;
+
+        /// <summary>
         /// Collection of tickets purchased with this payment.
         /// </summary>
         public virtual ICollection<PaymentItem> PaymentItems { get; set; } = new List<PaymentItem>();
