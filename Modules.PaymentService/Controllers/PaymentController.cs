@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Authorization;
 using Modules.PaymentService.DTOs;
+using Modules.PaymentService.Services;
 using Shared.Kernel.Extensions;
 
 namespace Modules.PaymentService.Controllers
@@ -18,49 +19,114 @@ namespace Modules.PaymentService.Controllers
     public class PaymentController : ControllerBase
     {
         private readonly ILogger<PaymentController> _logger;
+        private readonly IPaymentService _paymentService;
 
-        public PaymentController(ILogger<PaymentController> logger)
+        public PaymentController(ILogger<PaymentController> logger, IPaymentService paymentService)
         {
             _logger = logger;
+            _paymentService = paymentService;
         }
 
         /// <summary>
-        /// Initiates a payment transaction.
+        /// Creates a new payment session and returns a redirect URL to the PayAza payment page.
         /// </summary>
-        /// <param name="request">The payment initiation request containing transaction details.</param>
-        /// <returns>Payment initiation result with transaction reference.</returns>
-        /// <response code="200">Payment initiated successfully.</response>
+        /// <param name="request">The payment session creation request.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Payment session details with redirect URL.</returns>
+        /// <response code="200">Payment session created successfully.</response>
         /// <response code="400">Invalid payment data provided.</response>
         /// <response code="401">User not authenticated.</response>
-        [HttpPost("initiate")]
+        /// <response code="409">Duplicate transaction reference.</response>
+        [HttpPost("create-session")]
         [Authorize(Policy = "AuthenticatedUser")]
         [SwaggerOperation(
-            Summary = "Initiate a payment transaction",
-            Description = "Initiates a payment transaction with Payaza or Flutterwave and returns a payment URL for the user to complete the payment.",
-            OperationId = "InitiatePayment",
+            Summary = "Create a payment session",
+            Description = "Creates a new payment session and generates a redirect URL to PayAza payment page. The transaction is stored with PENDING_REDIRECT status.",
+            OperationId = "CreatePaymentSession",
             Tags = new[] { "Payments" }
         )]
-        [SwaggerResponse(200, "Payment initiated successfully", typeof(PaymentInitiationResponse))]
+        [SwaggerResponse(200, "Payment session created successfully", typeof(CreateSessionResponse))]
         [SwaggerResponse(400, "Invalid payment data")]
         [SwaggerResponse(401, "User not authenticated")]
-        public async Task<IActionResult> InitiatePayment([FromBody] PaymentInitiationRequest request)
+        [SwaggerResponse(409, "Duplicate transaction reference")]
+        public async Task<IActionResult> CreateSession(
+            [FromBody] CreateSessionRequest request,
+            CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("Payment initiation attempt for user {UserId}, amount {Amount}", request.UserId, request.Amount);
-            
-            // TODO: Implement actual payment initiation logic
-            var response = new PaymentInitiationResponse
+            try
             {
-                TransactionId = Guid.NewGuid(),
-                PaymentUrl = "https://checkout.Payaza.com/1234567890",
-                Reference = "TXN_" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"),
-                Amount = request.Amount,
-                Currency = request.Currency,
-                Status = "Pending",
-                ExpiresAt = DateTime.UtcNow.AddMinutes(30),
-                Gateway = "Payaza"
-            };
+                _logger.LogInformation(
+                    "Creating payment session for user {UserId}, event {EventId}, amount {Amount}",
+                    request.UserId, request.EventId, request.Amount);
 
-            return Ok(response);
+                var response = await _paymentService.CreateSessionAsync(request, cancellationToken);
+
+                _logger.LogInformation(
+                    "Payment session created successfully: {PaymentId}, Reference: {Reference}",
+                    response.PaymentId, response.TransactionReference);
+
+                return Ok(response);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Duplicate transaction reference"))
+            {
+                _logger.LogWarning("Duplicate transaction reference: {Message}", ex.Message);
+                return Conflict(new { Message = "Duplicate transaction reference. Please try again." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating payment session");
+                return StatusCode(500, new { Message = "An error occurred while creating the payment session." });
+            }
+        }
+
+        /// <summary>
+        /// Handles web redirect callback from PayAza payment page.
+        /// </summary>
+        /// <param name="request">The callback data from the payment gateway.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>Callback processing result.</returns>
+        /// <response code="200">Callback processed successfully.</response>
+        /// <response code="400">Invalid callback data.</response>
+        /// <response code="404">Payment not found.</response>
+        [HttpPost("web-redirect-callback")]
+        [AllowAnonymous] // Allow anonymous as this is called by payment gateway
+        [SwaggerOperation(
+            Summary = "Handle web redirect callback",
+            Description = "Processes the callback when user is redirected back from PayAza payment page. Updates the payment status based on the payment outcome.",
+            OperationId = "HandleWebRedirectCallback",
+            Tags = new[] { "Payments" }
+        )]
+        [SwaggerResponse(200, "Callback processed successfully", typeof(WebRedirectCallbackResponse))]
+        [SwaggerResponse(400, "Invalid callback data")]
+        [SwaggerResponse(404, "Payment not found")]
+        public async Task<IActionResult> HandleWebRedirectCallback(
+            [FromBody] WebRedirectCallbackRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation(
+                    "Handling web redirect callback for reference {Reference}, status {Status}",
+                    request.TransactionReference, request.Status);
+
+                var response = await _paymentService.HandleWebRedirectCallbackAsync(request, cancellationToken);
+
+                if (!response.Success && response.PaymentId == Guid.Empty)
+                {
+                    return NotFound(response);
+                }
+
+                _logger.LogInformation(
+                    "Web redirect callback processed successfully: {PaymentId}, Status: {Status}",
+                    response.PaymentId, response.Status);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing web redirect callback");
+                return StatusCode(500, new { Message = "An error occurred while processing the callback." });
+            }
         }
 
         /// <summary>
@@ -72,6 +138,7 @@ namespace Modules.PaymentService.Controllers
         /// <response code="400">Invalid webhook data.</response>
         /// <response code="401">Invalid webhook signature.</response>
         [HttpPost("webhook")]
+        [AllowAnonymous] // Allow anonymous as this is called by payment gateway
         [SwaggerOperation(
             Summary = "Handle payment webhook",
             Description = "Processes webhook notifications from payment gateways (Payaza/Flutterwave) to update payment status.",
