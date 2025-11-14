@@ -38,9 +38,9 @@ namespace Modules.PaymentService.Services
                     options.UseInMemoryDatabase("PaymentServiceDb"));
             }
 
-            // TODO: Register repositories and services when implemented
-            // services.AddScoped<IPaymentRepository, PaymentRepository>();
-            // services.AddScoped<IPaymentService, PaymentService>();
+            // Register repositories and services
+            services.AddScoped<Repositories.IPaymentRepository, Repositories.PaymentRepository>();
+            services.AddScoped<IPaymentService, PaymentService>();
 
             return services;
         }
