@@ -30,8 +30,8 @@ namespace Tests.PaymentService.Tests
                 SecretKeyLive = "live-secret-key",
                 Mode = "test",
                 MerchantKey = "merchant-123",
-                BaseUrlTest = "https://api-test.payaza.africa",
-                BaseUrlLive = "https://api.payaza.africa",
+                BaseUrlTest = "https://api.payaza.africa/live",
+                BaseUrlLive = "https://api.payaza.africa/live",
                 TimeoutSeconds = 30,
                 MaxRetryAttempts = 3,
                 InitialBackoffDelayMs = 100
@@ -42,18 +42,17 @@ namespace Tests.PaymentService.Tests
         public async Task GetAccountDetailsAsync_Success_ReturnsAccountDetails()
         {
             // Arrange
-            var response = new PayAzaAccountDetailsResponse
+            var response = new
             {
-                Success = true,
-                Message = "Account details retrieved successfully",
-                Data = new PayAzaAccountData
+                response_code = 200,
+                response_message = "Account details retrieved successfully",
+                response_content = new
                 {
-                    AccountNumber = "1234567890",
-                    AccountName = "John Doe",
-                    BankName = "Test Bank",
-                    BankCode = "123",
-                    Balance = 10000.00m,
-                    Currency = "NGN"
+                    account_number = "1234567890",
+                    account_name = "John Doe",
+                    bank_name = "Test Bank",
+                    bank_code = "123",
+                    currency = "NGN"
                 }
             };
 
@@ -96,17 +95,16 @@ namespace Tests.PaymentService.Tests
                 Narration = "Payout for event tickets"
             };
 
-            var response = new PayAzaPayoutResponse
+            var response = new
             {
-                Success = true,
-                Message = "Payout initiated successfully",
-                Data = new PayAzaPayoutData
+                response_code = 200,
+                response_message = "Payout initiated successfully",
+                response_content = new
                 {
-                    TransactionReference = request.TransactionReference,
-                    Status = "pending",
-                    Amount = request.Amount,
-                    Fee = 50.00m,
-                    CreatedAt = DateTime.UtcNow
+                    transaction_reference = request.TransactionReference,
+                    transaction_status = "pending",
+                    amount = request.Amount,
+                    response_status = "success"
                 }
             };
 
@@ -299,7 +297,7 @@ namespace Tests.PaymentService.Tests
             var secretKey = _testConfig.CurrentSecretKey;
             
             // Compute expected signature
-            using var hmac = new System.Security.Cryptography.HMACSHA256(Encoding.UTF8.GetBytes(secretKey));
+            using var hmac = new System.Security.Cryptography.HMACSHA512(Encoding.UTF8.GetBytes(secretKey));
             var hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
             var expectedSignature = Convert.ToHexString(hashBytes).ToLower();
 
@@ -440,7 +438,7 @@ namespace Tests.PaymentService.Tests
 
             return new HttpClient(handlerMock.Object)
             {
-                BaseAddress = new Uri("https://api-test.payaza.africa")
+                BaseAddress = new Uri("https://api.payaza.africa/live")
             };
         }
     }

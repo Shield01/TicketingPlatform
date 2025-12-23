@@ -44,8 +44,8 @@ The PayAza client is automatically registered when you add the PaymentService mo
     "SecretKeyLive": "your-live-secret-key",
     "Mode": "test",
     "MerchantKey": "your-merchant-key",
-    "BaseUrlTest": "https://api-test.payaza.africa",
-    "BaseUrlLive": "https://api.payaza.africa",
+    "BaseUrlTest": "https://api.payaza.africa/live",
+    "BaseUrlLive": "https://api.payaza.africa/live",
     "TimeoutSeconds": 30,
     "MaxRetryAttempts": 3,
     "InitialBackoffDelayMs": 1000
@@ -71,8 +71,8 @@ PAYAZA_MODE=test
 PAYAZA_MERCHANT_KEY=your-merchant-key
 
 # Optional: Override default URLs
-PAYAZA_BASE_URL_TEST=https://api-test.payaza.africa
-PAYAZA_BASE_URL_LIVE=https://api.payaza.africa
+PAYAZA_BASE_URL_TEST=https://api.payaza.africa/live
+PAYAZA_BASE_URL_LIVE=https://api.payaza.africa/live
 ```
 
 **Note**: Environment variables take precedence over appsettings.json values.

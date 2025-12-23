@@ -64,5 +64,32 @@ namespace Modules.PaymentService.Resources.LocalisedStrings
         public const string PaymentConfirmationAttempt = "Payment confirmation attempt for reference: {0}";
         public const string WebhookProcessingAttempt = "Webhook processing attempt for reference: {0}";
         public const string TransactionRetrievalAttempt = "Transaction retrieval attempt for user ID: {0}";
+
+        // Payout Messages
+        public const string PayoutInitiated = "Payout initiated successfully.";
+        public const string PayoutInitiationFailed = "Payout initiation failed.";
+        public const string PayoutCompleted = "Payout completed successfully.";
+        public const string PayoutFailed = "Payout failed.";
+        public const string PayoutCancelled = "Payout was cancelled.";
+        public const string PayoutNotFound = "Payout transaction not found.";
+        public const string PayoutAlreadyProcessed = "Payout has already been processed.";
+        public const string InvalidPayoutAmount = "Invalid payout amount. Amount must be greater than zero.";
+        public const string InvalidAccountNumber = "Invalid account number.";
+        public const string InvalidBankCode = "Invalid bank code.";
+        public const string AccountNumberRequired = "Account number is required.";
+        public const string BankCodeRequired = "Bank code is required.";
+        public const string AccountNameRequired = "Account name is required.";
+        public const string NarrationTooLong = "Narration cannot exceed 500 characters.";
+        public const string DuplicatePayoutReference = "A payout with this transaction reference already exists.";
+
+        // Account Enquiry Messages
+        public const string AccountVerified = "Account verified successfully.";
+        public const string AccountVerificationFailed = "Account verification failed.";
+        public const string AccountNotFound = "Account not found.";
+        public const string AccountEnquiryError = "Error occurred during account enquiry.";
+
+        // Authorization Messages
+        public const string UnauthorizedPayoutAccess = "You are not authorized to initiate payouts.";
+        public const string AdminOrFinanceRoleRequired = "Admin or Finance role is required for this operation.";
     }
 } 

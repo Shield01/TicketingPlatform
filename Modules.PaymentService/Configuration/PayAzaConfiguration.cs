@@ -52,13 +52,13 @@ namespace Modules.PaymentService.Configuration
         /// PayAza base URL for test environment.
         /// </summary>
         [Required]
-        public string BaseUrlTest { get; set; } = "https://api-test.payaza.africa";
+        public string BaseUrlTest { get; set; } = "https://api.payaza.africa/live";
 
         /// <summary>
         /// PayAza base URL for live environment.
         /// </summary>
         [Required]
-        public string BaseUrlLive { get; set; } = "https://api.payaza.africa";
+        public string BaseUrlLive { get; set; } = "https://api.payaza.africa/live";
 
         /// <summary>
         /// Timeout in seconds for API requests.
@@ -74,6 +74,16 @@ namespace Modules.PaymentService.Configuration
         /// Initial delay in milliseconds for exponential backoff.
         /// </summary>
         public int InitialBackoffDelayMs { get; set; } = 1000;
+
+        /// <summary>
+        /// PayAza transaction PIN for payouts.
+        /// </summary>
+        public string TransactionPin { get; set; } = string.Empty;
+
+        /// <summary>
+        /// PayAza account reference (for NGN payouts).
+        /// </summary>
+        public string AccountReference { get; set; } = string.Empty;
 
         /// <summary>
         /// Gets the current API key based on the configured mode.
