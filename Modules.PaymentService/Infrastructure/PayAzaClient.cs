@@ -7,6 +7,8 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Linq;
 
 namespace Modules.PaymentService.Infrastructure
 {
@@ -42,9 +44,7 @@ namespace Modules.PaymentService.Infrastructure
                 WriteIndented = false
             };
 
-            // Configure HttpClient
-            ConfigureHttpClient();
-
+            // HttpClient configured per request to ensure headers are fresh and correct
             _logger.LogInformation("PayAzaClient initialized in {Mode} mode", _configuration.Mode);
         }
 
@@ -65,12 +65,47 @@ namespace Modules.PaymentService.Infrastructure
             _logger.LogInformation("Getting account details for account {AccountNumber} at bank {BankCode}", 
                 accountNumber, bankCode);
 
-            var endpoint = $"/api/account/verify?account_number={accountNumber}&bank_code={bankCode}";
+            // Correct Endpoint: POST /payaza-account/api/v1/mainaccounts/merchant/provider/enquiry
+            var endpoint = "/payaza-account/api/v1/mainaccounts/merchant/provider/enquiry";
 
-            return await ExecuteWithRetryAsync<PayAzaAccountDetailsResponse>(
-                () => _httpClient.GetAsync(endpoint, cancellationToken),
+            var payload = new
+            {
+                service_payload = new
+                {
+                    currency = "NGN", // Defaulting to NGN as per MVP scope
+                    bank_code = bankCode,
+                    account_number = accountNumber
+                }
+            };
+
+            var internalResponse = await ExecuteWithRetryAsync<PayAzaEnquiryResponseInternal>(
+                async () => 
+                {
+                    var request = CreateRequestMessage(HttpMethod.Post, endpoint);
+                    request.Content = new StringContent(
+                        JsonSerializer.Serialize(payload, _jsonOptions),
+                        Encoding.UTF8,
+                        "application/json");
+                    return await _httpClient.SendAsync(request, cancellationToken);
+                },
                 "GetAccountDetails",
                 cancellationToken);
+
+            // Map to public DTO
+            return new PayAzaAccountDetailsResponse
+            {
+                Success = internalResponse.ResponseCode == 200,
+                Message = internalResponse.ResponseMessage,
+                Data = internalResponse.ResponseContent != null ? new PayAzaAccountData
+                {
+                    AccountName = internalResponse.ResponseContent.AccountName ?? string.Empty,
+                    AccountNumber = internalResponse.ResponseContent.AccountNumber ?? accountNumber,
+                    BankCode = internalResponse.ResponseContent.BankCode ?? bankCode,
+                    Currency = "NGN",
+                    BankName = internalResponse.ResponseContent.BankName ?? string.Empty
+                } : null,
+                Error = internalResponse.ResponseCode != 200 ? new PayAzaErrorDetails { Message = internalResponse.ResponseMessage } : null
+            };
         }
 
         /// <summary>
@@ -83,23 +118,77 @@ namespace Modules.PaymentService.Infrastructure
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
 
-            // Set merchant key if not provided
+            // Set merchant key if not provided (though new payload uses TransactionPin)
             if (string.IsNullOrWhiteSpace(request.MerchantKey))
                 request.MerchantKey = _configuration.MerchantKey;
 
             _logger.LogInformation("Initiating payout for reference {TransactionReference}, amount {Amount} {Currency}", 
                 request.TransactionReference, request.Amount, request.Currency);
 
-            var endpoint = "/api/payout/initiate";
-            var content = new StringContent(
-                JsonSerializer.Serialize(request, _jsonOptions),
-                Encoding.UTF8,
-                "application/json");
+            // Correct Endpoint: POST /payout-receptor/payout
+            var endpoint = "/payout-receptor/payout";
 
-            return await ExecuteWithRetryAsync<PayAzaPayoutResponse>(
-                () => _httpClient.PostAsync(endpoint, content, cancellationToken),
+            // Construct new nested payload
+            var payload = new
+            {
+                transaction_type = "nuban", // Default for NGN
+                service_payload = new
+                {
+                    payout_amount = request.Amount,
+                    transaction_pin = int.TryParse(_configuration.TransactionPin, out var pin) ? pin : 0, // Should be parsed from config
+                    account_reference = _configuration.AccountReference,
+                    currency = request.Currency,
+                    country = "NGA", // Default for NGN
+                    payout_beneficiaries = new[]
+                    {
+                        new
+                        {
+                            credit_amount = request.Amount,
+                            account_number = request.AccountNumber,
+                            account_name = request.AccountName ?? "Beneficiary",
+                            bank_code = request.BankCode,
+                            narration = request.Narration,
+                            transaction_reference = request.TransactionReference,
+                            sender = new
+                            {
+                                sender_name = "Ticketing Platform", // Generic sender name
+                                sender_id = "",
+                                sender_phone_number = "",
+                                sender_address = ""
+                            }
+                        }
+                    }
+                }
+            };
+
+            var internalResponse = await ExecuteWithRetryAsync<PayAzaPayoutResponseInternal>(
+                async () =>
+                {
+                    var request = CreateRequestMessage(HttpMethod.Post, endpoint);
+                    request.Content = new StringContent(
+                        JsonSerializer.Serialize(payload, _jsonOptions),
+                        Encoding.UTF8,
+                        "application/json");
+                    return await _httpClient.SendAsync(request, cancellationToken);
+                },
                 "InitiatePayout",
                 cancellationToken);
+
+            // Map to public DTO
+            return new PayAzaPayoutResponse
+            {
+                Success = internalResponse.ResponseCode == 200,
+                Message = internalResponse.ResponseMessage,
+                Data = internalResponse.ResponseContent != null ? new PayAzaPayoutData
+                {
+                    TransactionReference = internalResponse.ResponseContent.TransactionReference ?? request.TransactionReference,
+                    Status = internalResponse.ResponseContent.TransactionStatus ?? "Initiated",
+                    Amount = internalResponse.ResponseContent.Amount,
+                    Fee = 0, // Fee not explicitly returned in the simple internal response structure sometimes
+                    CreatedAt = DateTime.UtcNow // Placeholder
+                } : null,
+                Error = internalResponse.ResponseCode != 200 ? new PayAzaErrorDetails { Message = internalResponse.ResponseMessage } : null
+            };
         }
 
         /// <summary>
@@ -117,7 +206,11 @@ namespace Modules.PaymentService.Infrastructure
             var endpoint = $"/api/transaction/status/{transactionReference}";
 
             return await ExecuteWithRetryAsync<PayAzaTransactionStatusResponse>(
-                () => _httpClient.GetAsync(endpoint, cancellationToken),
+                async () =>
+                {
+                   var request = CreateRequestMessage(HttpMethod.Get, endpoint);
+                   return await _httpClient.SendAsync(request, cancellationToken);
+                },
                 "GetTransactionStatus",
                 cancellationToken);
         }
@@ -136,7 +229,7 @@ namespace Modules.PaymentService.Infrastructure
             try
             {
                 var secretKey = _configuration.CurrentSecretKey;
-                var computedSignature = ComputeHmacSha256(payload, secretKey);
+                var computedSignature = ComputeHmacSha512(payload, secretKey);
                 var isValid = signature.Equals(computedSignature, StringComparison.OrdinalIgnoreCase);
 
                 _logger.LogInformation("Webhook signature validation result: {IsValid}", isValid);
@@ -167,29 +260,37 @@ namespace Modules.PaymentService.Infrastructure
         }
 
         /// <summary>
-        /// Configures the HttpClient with base address and default headers.
+        /// Creates an HTTP request message with required headers.
         /// </summary>
-        private void ConfigureHttpClient()
+        private HttpRequestMessage CreateRequestMessage(HttpMethod method, string requestUri)
         {
-            _httpClient.BaseAddress = new Uri(_configuration.CurrentBaseUrl);
-            _httpClient.Timeout = TimeSpan.FromSeconds(_configuration.TimeoutSeconds);
+            // Construct full URI manually to ensure Base URL path segments (e.g. '/live') 
+            // are preserved and not overridden by leading slashes in relative paths.
+            var baseUrl = _configuration.CurrentBaseUrl.TrimEnd('/');
+            var relativePath = requestUri.TrimStart('/');
+            var fullUri = new Uri($"{baseUrl}/{relativePath}");
 
-            // Clear existing headers
-            _httpClient.DefaultRequestHeaders.Clear();
+            var request = new HttpRequestMessage(method, fullUri);
 
-            // Add Authorization header with Base64-encoded API key
-            var authHeaderValue = _configuration.GetAuthorizationHeaderValue();
-            _httpClient.DefaultRequestHeaders.Add("Authorization", authHeaderValue);
+            // Add Authorization header
+            // Format: "Payaza <Base64EncodedKey>"
+            var apiKey = _configuration.CurrentApiKey;
+            var encodedKey = Convert.ToBase64String(Encoding.UTF8.GetBytes(apiKey));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Payaza", encodedKey);
 
             // Add X-TenantID header
-            _httpClient.DefaultRequestHeaders.Add("X-TenantID", _configuration.TenantId);
+            request.Headers.Add("X-TenantID", _configuration.TenantId);
 
             // Add standard headers
-            _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", "TicketingPlatform-PayAzaClient/1.0");
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            
+            // Add User-Agent if not present (though HttpClient might have default)
+            if (!request.Headers.UserAgent.Any())
+            {
+                request.Headers.UserAgent.ParseAdd("TicketingPlatform-PayAzaClient/1.0");
+            }
 
-            _logger.LogDebug("HttpClient configured with base URL: {BaseUrl}, TenantID: {TenantId}", 
-                _configuration.CurrentBaseUrl, _configuration.TenantId);
+            return request;
         }
 
         /// <summary>
@@ -356,16 +457,75 @@ namespace Modules.PaymentService.Infrastructure
         }
 
         /// <summary>
-        /// Computes HMAC-SHA256 hash for webhook signature validation.
+        /// Computes HMAC-SHA512 hash for webhook signature validation.
         /// </summary>
-        private static string ComputeHmacSha256(string message, string secret)
+        private static string ComputeHmacSha512(string message, string secret)
         {
             var keyBytes = Encoding.UTF8.GetBytes(secret);
             var messageBytes = Encoding.UTF8.GetBytes(message);
 
-            using var hmac = new HMACSHA256(keyBytes);
+            using var hmac = new HMACSHA512(keyBytes);
             var hashBytes = hmac.ComputeHash(messageBytes);
             return Convert.ToHexString(hashBytes).ToLower();
+        }
+
+        // Internal Response Classes for PayAza API deserialization
+
+        private class PayAzaEnquiryResponseInternal
+        {
+            [JsonPropertyName("response_code")]
+            public int ResponseCode { get; set; }
+
+            [JsonPropertyName("response_message")]
+            public string ResponseMessage { get; set; } = string.Empty;
+
+            [JsonPropertyName("response_content")]
+            public PayAzaEnquiryContent? ResponseContent { get; set; }
+        }
+
+        private class PayAzaEnquiryContent
+        {
+            [JsonPropertyName("account_name")]
+            public string? AccountName { get; set; }
+
+            [JsonPropertyName("account_number")]
+            public string? AccountNumber { get; set; }
+
+            [JsonPropertyName("bank_code")]
+            public string? BankCode { get; set; }
+
+            [JsonPropertyName("bank_name")]
+            public string? BankName { get; set; }
+            
+            [JsonPropertyName("transaction_status")]
+            public string? TransactionStatus { get; set; }
+        }
+
+        private class PayAzaPayoutResponseInternal
+        {
+            [JsonPropertyName("response_code")]
+            public int ResponseCode { get; set; }
+
+            [JsonPropertyName("response_message")]
+            public string ResponseMessage { get; set; } = string.Empty;
+
+            [JsonPropertyName("response_content")]
+            public PayAzaPayoutContent? ResponseContent { get; set; }
+        }
+
+        private class PayAzaPayoutContent
+        {
+            [JsonPropertyName("transaction_status")]
+            public string? TransactionStatus { get; set; }
+
+            [JsonPropertyName("transaction_reference")]
+            public string? TransactionReference { get; set; }
+
+            [JsonPropertyName("amount")]
+            public decimal Amount { get; set; }
+
+            [JsonPropertyName("response_status")]
+            public string? ResponseStatus { get; set; }
         }
     }
 }

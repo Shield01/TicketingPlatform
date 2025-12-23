@@ -28,8 +28,8 @@ namespace Tests.PaymentService.Tests
                 SecretKeyTest = "test_secret",
                 Mode = "test",
                 MerchantKey = "merchant_key_123",
-                BaseUrlTest = "https://api-test.payaza.africa",
-                BaseUrlLive = "https://api.payaza.africa"
+                BaseUrlTest = "https://api.payaza.africa/live",
+                BaseUrlLive = "https://api.payaza.africa/live"
             };
             _mockLogger = new Mock<ILogger<Modules.PaymentService.Services.PaymentService>>();
             _service = new Modules.PaymentService.Services.PaymentService(_mockRepository.Object, _configuration, _mockLogger.Object);

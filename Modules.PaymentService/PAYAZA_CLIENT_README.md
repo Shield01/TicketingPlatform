@@ -163,8 +163,8 @@ PAYAZA_API_KEY_LIVE=your-live-api-key
 PAYAZA_SECRET_KEY_LIVE=your-live-secret-key
 PAYAZA_MODE=test
 PAYAZA_MERCHANT_KEY=your-merchant-key
-PAYAZA_BASE_URL_TEST=https://api-test.payaza.africa
-PAYAZA_BASE_URL_LIVE=https://api.payaza.africa
+PAYAZA_BASE_URL_TEST=https://api.payaza.africa/live
+PAYAZA_BASE_URL_LIVE=https://api.payaza.africa/live
 ```
 
 ### Usage Example
